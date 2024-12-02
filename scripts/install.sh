@@ -37,11 +37,11 @@ mkdir -p "$DATA_DIR" "$CONFIG_DIR" "$BIN_DIR" "$ICON_DIR" "$DESKTOP_FILE_DIR"
 
 # Download the app binary from GitHub releases
 echo "Downloading the latest release..."
-if ! curl -fsSL --progress-bar "$GITHUB_REPO/$APP_NAME" -o "$BIN_DIR/$APP_NAME"; then
+if ! curl -L --progress-bar "$GITHUB_REPO/$APP_NAME" -o "$BIN_DIR/$APP_NAME"; then
     echo -e "\033[1;31m❌ Failed to download revmo. Please check your internet connection and try again.\033[0m"
     exit 1
 fi
-if ! curl -fsSL --progress-bar "$GITHUB_REPO/$ICON" -o "$ICON_DIR/$ICON"; then
+if ! curl -L --progress-bar "$GITHUB_REPO/$ICON" -o "$ICON_DIR/$ICON"; then
     echo -e "\033[1;31m❌ Failed to download revmo. Please check your internet connection and try again.\033[0m"
     exit 1
 fi
