@@ -21,8 +21,8 @@ _**Because clicking is overrated, and efficiency is everything.**_
 - 🗑️ **Customizable App List**: Remove unwanted apps with ease.
 
 <div align="center">
-  <img src="https://github.com/qzakwani/revmo/blob/master/resources/app.png" alt="app" width="250">
-  <img src="https://github.com/qzakwani/revmo/blob/master/resources/app_screen.png" alt="app in action" width="250">
+  <img src="https://github.com/qzakwani/revmo/blob/master/resources/app.png" alt="app" width="45%">
+  <img src="https://github.com/qzakwani/revmo/blob/master/resources/app_screen.png" alt="app in action" width="45%">
 </div>
 
 ## 🛠️ **Getting Started**
