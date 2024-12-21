@@ -31,9 +31,8 @@ Before you install, make sure your system meets the following requirements:
 
 - **🖥️ OS**: Linux
 - **💻 Architecture**: x86_64
-- **⚙️ Needs**: A GNU system and a desktop environment (e.g., GNOME, KDE Plasma, Cinnamon)
+- **⚙️ Needs**: A GNU system and a desktop environment (e.g., Hyprland, GNOME, KDE Plasma, Cinnamon)
 
-⚠️ **Note**: more os and non-desktop environment coming!
 
 ### **1. Installation**
 
@@ -109,6 +108,3 @@ Here are some common issues you might encounter and how to fix them:
 
 If you encounter other problems, feel free file an issue. I’ve got you covered! 🛠️
 
-### 🌟 **Coming Soon**
-
-**Revmo** is expanding! I'm working on bringing support for more operating systems and non-traditional desktop environments, including **Hyprland** and similar setups. Stay tuned for updates as I make **Revmo** even more versatile and accessible!
