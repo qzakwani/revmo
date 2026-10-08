@@ -7,6 +7,7 @@ mod parser;
 mod store;
 mod styles;
 mod theme;
+mod xdg;
 
 // use std::time::Instant;
 use std::{env, vec};
