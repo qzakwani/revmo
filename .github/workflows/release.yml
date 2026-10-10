@@ -1,0 +1,30 @@
+name: Release
+
+# Push a tag like v1.1.0 to build the binary and publish a GitHub release
+# with the files scripts/install.sh downloads.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # The oldest supported runner, so the binary links against an older
+    # glibc and runs on more distributions.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+      - name: Collect release files
+        run: |
+          mkdir dist
+          cp target/release/revmo dist/revmo
+          cp resources/icon.png dist/revmo.png
+          cd dist && sha256sum revmo revmo.png > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
