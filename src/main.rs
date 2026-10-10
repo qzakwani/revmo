@@ -373,6 +373,9 @@ impl Revmo {
                 self.search.clear();
                 self.visible.clear();
                 self.selected = 0;
+                self.is_args = false;
+                self.app_args.clear();
+                self.exec_args.clear();
                 self.is_loading = true;
                 let toast = self.notify("Apps rescanned.".into(), ToastLevel::Success);
                 Task::batch([load_apps(true), toast])
