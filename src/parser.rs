@@ -6,13 +6,13 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::{store, HOME_DIR};
 use revmo::launch;
 use revmo::search::Haystack;
 use revmo::xdg::desktop_entry::{self, Context};
 use revmo::xdg::exec::{split_user_args, Exec, FieldCode};
 use revmo::xdg::icons::{self, IconLookup};
 use revmo::xdg::{base_dirs, keyfile::Locale};
-use crate::{store, HOME_DIR};
 
 // Icons are drawn at styles::ICON_SIZE (30px). Asking for 64px keeps them
 // sharp on 2x HiDPI screens; they scale down cleanly on 1x ones.

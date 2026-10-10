@@ -20,9 +20,9 @@ use iced::{event, keyboard, window, Alignment, Event, Padding, Settings};
 use iced::{Element, Subscription, Task};
 use iced::{Fill, Theme};
 use parser::App;
-use styles::Icons;
 use revmo::xdg::exec::FieldCode;
 use revmo::{instance, search, usage, xdg};
+use styles::Icons;
 
 static HOME_DIR: LazyLock<String> = LazyLock::new(|| {
     env::var_os("HOME")
@@ -63,7 +63,8 @@ static INSTANCE_SOCKET: std::sync::Mutex<Option<std::os::unix::net::UnixListener
     std::sync::Mutex::new(None);
 
 fn main() -> iced::Result {
-    let cache_dir = xdg::base_dirs::cache_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo");
+    let cache_dir =
+        xdg::base_dirs::cache_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo");
     match instance::acquire(&instance::socket_path(&cache_dir)) {
         Some(instance::Instance::Secondary) => return Ok(()),
         Some(instance::Instance::Primary(listener)) => {
@@ -212,9 +213,10 @@ impl Revmo {
         self.toast_id += 1;
         self.toast = Some((msg, level));
         let id = self.toast_id;
-        Task::perform(helpers::on_thread(|| thread::sleep(TOAST_DURATION)), move |_| {
-            Message::ToastDone(id)
-        })
+        Task::perform(
+            helpers::on_thread(|| thread::sleep(TOAST_DURATION)),
+            move |_| Message::ToastDone(id),
+        )
     }
 
     fn set_theme(&mut self, theme: Theme) {
@@ -310,10 +312,7 @@ impl Revmo {
                 if self.is_args {
                     return Task::none();
                 }
-                self.app_args = self
-                    .selected_app()
-                    .map(App::arg_codes)
-                    .unwrap_or_default();
+                self.app_args = self.selected_app().map(App::arg_codes).unwrap_or_default();
                 self.exec_args = vec![String::new(); self.app_args.len()];
                 self.is_args = !self.app_args.is_empty();
                 focus("0")
@@ -367,9 +366,7 @@ impl Revmo {
             Message::WindowUnfocused => Task::none(),
 
             Message::Junk(_) => Task::none(),
-            Message::RunFailed => {
-                self.notify("Failed to launch app!".into(), ToastLevel::Error)
-            }
+            Message::RunFailed => self.notify("Failed to launch app!".into(), ToastLevel::Error),
 
             Message::Refresh => {
                 // Rescan only: history, removed apps and the theme stay.
@@ -499,7 +496,6 @@ fn load_apps(force_scan: bool) -> Task<Message> {
 
 fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
     match e {
-
         Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => match key {
             Key::Named(Named::ArrowDown) => Some(Message::SelectDown),
             Key::Named(Named::ArrowUp) => Some(Message::SelectUp),
@@ -510,14 +506,12 @@ fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
             Key::Named(Named::ArrowLeft) => Some(Message::HideArgs),
             Key::Named(Named::Tab) => Some(Message::SelectDown),
             Key::Character(c) if modifiers.command() && c.as_str() == "h" => {
-            Some(Message::HelpPage)
+                Some(Message::HelpPage)
             }
             Key::Character(c) if modifiers.command() && c.as_str() == "d" => {
-            Some(Message::RemoveApp)
+                Some(Message::RemoveApp)
             }
-            Key::Character(c) if modifiers.command() && c.as_str() == "r" => {
-            Some(Message::Refresh)
-            }
+            Key::Character(c) if modifiers.command() && c.as_str() == "r" => Some(Message::Refresh),
             _ => None,
         },
         Event::Window(window::Event::Focused) => Some(Message::WindowFocused),

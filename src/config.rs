@@ -11,9 +11,9 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use crate::theme;
+use crate::HOME_DIR;
 use revmo::xdg::base_dirs::config_home;
 use revmo::xdg::keyfile::{escape, KeyFile};
-use crate::HOME_DIR;
 
 const GROUP: &str = "Revmo";
 
