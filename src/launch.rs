@@ -86,6 +86,7 @@ mod tests {
 
     #[test]
     fn spawns_without_a_shell() {
+        let _guard = crate::fork_lock();
         let tmp = tempfile::tempdir().unwrap();
         let out = tmp.path().join("out");
         // `$1` stays literal unless something hands the line to a shell twice.
@@ -119,6 +120,7 @@ mod tests {
 
     #[test]
     fn missing_program_is_an_error() {
+        let _guard = crate::fork_lock();
         assert!(spawn(vec!["revmo-no-such-program".into()], false, None).is_err());
         assert!(spawn(vec![], false, None).is_err());
     }

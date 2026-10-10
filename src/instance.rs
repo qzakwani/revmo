@@ -54,6 +54,7 @@ mod tests {
 
     #[test]
     fn second_instance_signals_the_first() {
+        let _guard = crate::fork_lock();
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("run/revmo.sock");
 
