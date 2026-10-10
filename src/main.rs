@@ -3,6 +3,7 @@ mod batch;
 mod config;
 mod help_page;
 mod helpers;
+mod instance;
 mod launch;
 mod parser;
 mod store;
@@ -61,7 +62,21 @@ const TOAST_DURATION: Duration = Duration::from_secs(5);
 
 const LAUNCH_ICON: &[u8] = include_bytes!("../assets/launch.svg");
 
+/// The listening socket of this (primary) instance, handed to the
+/// subscription that watches it.
+static INSTANCE_SOCKET: std::sync::Mutex<Option<std::os::unix::net::UnixListener>> =
+    std::sync::Mutex::new(None);
+
 fn main() -> iced::Result {
+    let cache_dir = xdg::base_dirs::cache_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo");
+    match instance::acquire(&instance::socket_path(&cache_dir)) {
+        Some(instance::Instance::Secondary) => return Ok(()),
+        Some(instance::Instance::Primary(listener)) => {
+            *INSTANCE_SOCKET.lock().unwrap() = Some(listener);
+        }
+        None => {}
+    }
+
     let settings = window::settings::Settings {
         size: iced::Size::new(1000.0, WINDOW_HEIGHT),
         position: window::Position::Centered,
@@ -116,6 +131,8 @@ struct Revmo {
     exec_args: Vec<String>,
     usage: usage::Usage,
     is_loading: bool,
+    /// Set once the window has had focus; losing it after that closes revmo.
+    was_focused: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -145,6 +162,8 @@ enum Message {
     Junk(()),
     ForwardTheme,
     BackwardTheme,
+    WindowFocused,
+    WindowUnfocused,
     // Resized(iced::Size),
 }
 
@@ -173,6 +192,7 @@ impl Revmo {
             exec_args: Vec::new(),
             usage: usage::Usage::load(&USAGE_FILE),
             is_loading: true,
+            was_focused: false,
         }
     }
 
@@ -342,6 +362,16 @@ impl Revmo {
 
             Message::Exit => window::get_latest().and_then(window::close),
 
+            Message::WindowFocused => {
+                self.was_focused = true;
+                Task::none()
+            }
+            // Like other launchers: clicking elsewhere dismisses revmo. Some
+            // window managers never focus the window, so only close after it
+            // actually had focus.
+            Message::WindowUnfocused if self.was_focused => Task::done(Message::Exit),
+            Message::WindowUnfocused => Task::none(),
+
             Message::Junk(_) => Task::none(),
             Message::RunFailed => {
                 self.notify("Failed to launch app!".into(), ToastLevel::Error)
@@ -373,30 +403,10 @@ impl Revmo {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        event::listen_with(|e, _, _| match e {
-            Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => match key {
-                Key::Named(Named::ArrowDown) => Some(Message::SelectDown),
-                Key::Named(Named::ArrowUp) => Some(Message::SelectUp),
-                Key::Named(Named::Escape) => Some(Message::Exit),
-                Key::Named(Named::ArrowRight) if modifiers.command() => Some(Message::ForwardTheme),
-                Key::Named(Named::ArrowRight) => Some(Message::ViewArgs),
-                Key::Named(Named::ArrowLeft) if modifiers.command() => Some(Message::BackwardTheme),
-                Key::Named(Named::ArrowLeft) => Some(Message::HideArgs),
-                Key::Named(Named::Tab) => Some(Message::SelectDown),
-                Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("h") => {
-                    Some(Message::HelpPage)
-                }
-                Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("d") => {
-                    Some(Message::RemoveApp)
-                }
-                Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("r") => {
-                    Some(Message::Refresh)
-                }
-                _ => None,
-            },
-            // Event::Window(window::Event::Resized(s)) => Some(Message::Resized(s)),
-            _ => None,
-        })
+        Subscription::batch([
+            Subscription::run(other_instances),
+            event::listen_with(handle_event),
+        ])
     }
 
     fn view(&self) -> Element<Message> {
@@ -494,4 +504,47 @@ fn load_apps(force_scan: bool) -> Task<Message> {
         helpers::on_thread(move || App::get(force_scan)),
         Message::AppsLoaded,
     )
+}
+
+fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
+    match e {
+
+        Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => match key {
+            Key::Named(Named::ArrowDown) => Some(Message::SelectDown),
+            Key::Named(Named::ArrowUp) => Some(Message::SelectUp),
+            Key::Named(Named::Escape) => Some(Message::Exit),
+            Key::Named(Named::ArrowRight) if modifiers.command() => Some(Message::ForwardTheme),
+            Key::Named(Named::ArrowRight) => Some(Message::ViewArgs),
+            Key::Named(Named::ArrowLeft) if modifiers.command() => Some(Message::BackwardTheme),
+            Key::Named(Named::ArrowLeft) => Some(Message::HideArgs),
+            Key::Named(Named::Tab) => Some(Message::SelectDown),
+            Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("h") => {
+            Some(Message::HelpPage)
+            }
+            Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("d") => {
+            Some(Message::RemoveApp)
+            }
+            Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("r") => {
+            Some(Message::Refresh)
+            }
+            _ => None,
+        },
+        Event::Window(window::Event::Focused) => Some(Message::WindowFocused),
+        Event::Window(window::Event::Unfocused) => Some(Message::WindowUnfocused),
+        _ => None,
+    }
+}
+
+/// Emits `Exit` whenever another `revmo` starts (see instance.rs).
+fn other_instances() -> impl iced::futures::Stream<Item = Message> {
+    iced::stream::channel(1, |output| async move {
+        if let Some(listener) = INSTANCE_SOCKET.lock().unwrap().take() {
+            thread::spawn(move || {
+                for _ in listener.incoming() {
+                    let _ = output.clone().try_send(Message::Exit);
+                }
+            });
+        }
+        std::future::pending::<()>().await
+    })
 }
