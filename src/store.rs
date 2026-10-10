@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 
-use crate::xdg::base_dirs::cache_home;
+use revmo::xdg::base_dirs::cache_home;
 use crate::{parser::App, HOME_DIR};
 
 // Bump when App or scanning changes, so old caches are rebuilt.

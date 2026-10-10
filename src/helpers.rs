@@ -22,7 +22,7 @@ pub fn on_thread<T: Send + 'static>(
     async move { rx.await.expect("worker thread panicked") }
 }
 
-pub fn show_toast(msg: String, level: ToastLevel, t: &Theme) -> Container<Message> {
+pub fn show_toast(msg: String, level: ToastLevel, t: &Theme) -> Container<'_, Message> {
     let txt: Color;
     let bg: Color;
     match level {
@@ -46,10 +46,6 @@ pub fn show_toast(msg: String, level: ToastLevel, t: &Theme) -> Container<Messag
         .width(Fill)
 }
 
-// pub fn batch_size(container_h: f32, item_h: f32) -> usize {
-//     (container_h / item_h).floor() as usize
-// }
-
 pub fn get_app_view<'a>(app: &'a App, selected: bool, theme: &'a Theme) -> Container<'a, Message> {
     let icon = view_app_icon(app.icon.clone());
     if selected {
@@ -60,7 +56,7 @@ pub fn get_app_view<'a>(app: &'a App, selected: bool, theme: &'a Theme) -> Conta
                 Space::with_width(6),
                 button(get_inner_button(app, theme, true))
                     .on_press(Message::RunPress(app.id))
-                    .style(|_, _| styles::UNSELECTED_STYLE.clone())
+                    .style(|_, _| *styles::UNSELECTED_STYLE)
                     .width(Fill)
             ]
             .align_y(Alignment::Center),
@@ -68,7 +64,7 @@ pub fn get_app_view<'a>(app: &'a App, selected: bool, theme: &'a Theme) -> Conta
         .height(APP_HEIGHT)
         .align_y(Alignment::Center)
         .padding(APP_PADDING)
-        .style(|t| styles::selected_container_style(t))
+        .style(styles::selected_container_style)
     } else {
         container(
             row![
@@ -78,7 +74,7 @@ pub fn get_app_view<'a>(app: &'a App, selected: bool, theme: &'a Theme) -> Conta
                 button(get_inner_button(app, theme, false))
                     .on_press(Message::RunPress(app.id))
                     .width(Fill)
-                    .style(|_, _| styles::UNSELECTED_STYLE.clone())
+                    .style(|_, _| *styles::UNSELECTED_STYLE)
             ]
             .align_y(Alignment::Center),
         )
@@ -103,7 +99,7 @@ pub fn view_app_icon(icon: Option<String>) -> Element<'static, Message> {
         }
     } else {
         container(
-            text(DEFAULT_APP_ICON.clone())
+            text(DEFAULT_APP_ICON)
                 .color(Color::BLACK)
                 .size(styles::ICON_SIZE * 0.9)
                 .align_y(Alignment::Center)

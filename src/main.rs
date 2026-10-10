@@ -3,17 +3,12 @@ mod batch;
 mod config;
 mod help_page;
 mod helpers;
-mod instance;
-mod launch;
 mod parser;
 mod store;
 mod styles;
 mod theme;
-mod search;
-mod usage;
-mod xdg;
 
-// use std::time::Instant;
+use std::sync::LazyLock;
 use std::time::Duration;
 use std::{env, thread, vec};
 
@@ -24,19 +19,19 @@ use iced::window::settings::PlatformSpecific;
 use iced::{event, keyboard, window, Alignment, Event, Padding, Settings};
 use iced::{Element, Subscription, Task};
 use iced::{Fill, Theme};
-use once_cell::sync::Lazy;
 use parser::App;
 use styles::Icons;
-use xdg::exec::FieldCode;
+use revmo::xdg::exec::FieldCode;
+use revmo::{instance, search, usage, xdg};
 
-static HOME_DIR: Lazy<String> = Lazy::new(|| {
+static HOME_DIR: LazyLock<String> = LazyLock::new(|| {
     env::var_os("HOME")
         .expect("os $HOME not found")
         .to_string_lossy()
         .to_string()
 });
-static INPUT: Lazy<text_input::Id> = Lazy::new(|| text_input::Id::new("input"));
-static CONTAINER: Lazy<container::Id> = Lazy::new(|| container::Id::new("main"));
+static INPUT: LazyLock<text_input::Id> = LazyLock::new(|| text_input::Id::new("input"));
+static CONTAINER: LazyLock<container::Id> = LazyLock::new(|| container::Id::new("main"));
 const DEFAULT_APP_ICON: char = '\u{f40e}';
 const APP_HEIGHT: f32 = 60.0;
 const APP_PADDING: f32 = 4.0;
@@ -47,7 +42,7 @@ const BODY_HEIGHT: f32 = BATCH_SIZE as f32 * APP_HEIGHT;
 const FOOTER_HEIGHT: f32 = 40.0;
 const WINDOW_HEIGHT: f32 = HEADER_HEIGHT + BODY_HEIGHT + FOOTER_HEIGHT;
 
-static USAGE_FILE: std::sync::LazyLock<std::path::PathBuf> = std::sync::LazyLock::new(|| {
+static USAGE_FILE: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
     xdg::base_dirs::state_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo/usage")
 });
 
@@ -164,7 +159,6 @@ enum Message {
     BackwardTheme,
     WindowFocused,
     WindowUnfocused,
-    // Resized(iced::Size),
 }
 
 impl Revmo {
@@ -395,10 +389,7 @@ impl Revmo {
             Message::BackwardTheme => {
                 self.set_theme(theme::previous(&self.theme).clone());
                 Task::none()
-            } // Message::Resized(size) => {
-              // self.batch_size = helpers::batch_size(size.height, APP_HEIGHT);
-              // Task::none()
-              // }
+            }
         }
     }
 
@@ -409,7 +400,7 @@ impl Revmo {
         ])
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         if self.is_loading {
             return container(text("Loading apps...").size(30))
                 .height(Fill)
@@ -443,7 +434,7 @@ impl Revmo {
             .align_y(Alignment::Center)
             .spacing(20),
         )
-        .style(|t| styles::header_style(t))
+        .style(styles::header_style)
         .align_y(Alignment::Center)
         .padding([0, 20]);
 
@@ -461,12 +452,12 @@ impl Revmo {
             container(
                 row![
                     text(format!("{}/{}", active_batch, total_batches))
-                        .style(|t| styles::PAGE_COUNTER_STYLE.clone()(t))
+                        .style(styles::page_counter_style)
                         .size(18),
                     Space::with_width(Fill),
                     text("\u{f0634} \u{f0fd} ")
                         .size(24)
-                        .style(|t| styles::PAGE_COUNTER_STYLE.clone()(t))
+                        .style(styles::page_counter_style)
                         .align_y(Alignment::Center),
                     Space::with_width(Fill),
                     text("\u{f12b7} ")
@@ -518,13 +509,13 @@ fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
             Key::Named(Named::ArrowLeft) if modifiers.command() => Some(Message::BackwardTheme),
             Key::Named(Named::ArrowLeft) => Some(Message::HideArgs),
             Key::Named(Named::Tab) => Some(Message::SelectDown),
-            Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("h") => {
+            Key::Character(c) if modifiers.command() && c.as_str() == "h" => {
             Some(Message::HelpPage)
             }
-            Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("d") => {
+            Key::Character(c) if modifiers.command() && c.as_str() == "d" => {
             Some(Message::RemoveApp)
             }
-            Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("r") => {
+            Key::Character(c) if modifiers.command() && c.as_str() == "r" => {
             Some(Message::Refresh)
             }
             _ => None,

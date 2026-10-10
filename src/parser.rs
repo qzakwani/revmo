@@ -6,12 +6,12 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::launch;
-use crate::search::Haystack;
-use crate::xdg::desktop_entry::{self, Context};
-use crate::xdg::exec::{split_user_args, Exec, FieldCode};
-use crate::xdg::icons::{self, IconLookup};
-use crate::xdg::{base_dirs, keyfile::Locale};
+use revmo::launch;
+use revmo::search::Haystack;
+use revmo::xdg::desktop_entry::{self, Context};
+use revmo::xdg::exec::{split_user_args, Exec, FieldCode};
+use revmo::xdg::icons::{self, IconLookup};
+use revmo::xdg::{base_dirs, keyfile::Locale};
 use crate::{store, HOME_DIR};
 
 // Icons are drawn at styles::ICON_SIZE (30px). Asking for 64px keeps them

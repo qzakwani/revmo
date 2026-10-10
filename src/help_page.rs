@@ -50,12 +50,12 @@ pub fn view(state: &Revmo) -> Element<'static, Message> {
     .into()
 }
 
-fn keyboard_shortcut(icon: &str) -> Text {
+fn keyboard_shortcut(icon: &str) -> Text<'_> {
     text(icon)
         .size(ICON_SIZE)
         .height(CELL_HEIGHT)
         .align_y(Alignment::Center)
 }
-fn keyboard_shortcut_exp(exp: &str) -> Text {
+fn keyboard_shortcut_exp(exp: &str) -> Text<'_> {
     text(exp).height(CELL_HEIGHT).align_y(Alignment::Center)
 }

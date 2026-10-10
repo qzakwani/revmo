@@ -1,7 +1,7 @@
 use iced::Theme;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
-pub static THEMES: Lazy<[Theme; 44]> = Lazy::new(|| {
+pub static THEMES: LazyLock<[Theme; 44]> = LazyLock::new(|| {
     [
         Theme::Light,
         Theme::custom("Nude Light".to_string(), Theme::Light.palette()),
