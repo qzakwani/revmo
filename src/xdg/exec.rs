@@ -92,6 +92,12 @@ impl Exec {
             .collect()
     }
 
+    /// The program name: the first argument without its directory.
+    pub fn program(&self) -> String {
+        let first = self.args.first().map(arg_text).unwrap_or_default();
+        first.rsplit('/').next().unwrap_or_default().to_string()
+    }
+
     /// Builds the argument list. `values` has one entry per field code
     /// returned by [`Exec::codes`]; missing entries count as empty.
     pub fn expand(&self, values: &[Vec<String>]) -> Vec<String> {
@@ -325,6 +331,7 @@ mod tests {
     fn reports_codes() {
         let exec = Exec::parse("/usr/bin/foo --a %U %f", &info()).unwrap();
         assert_eq!(exec.codes(), [FieldCode::Urls, FieldCode::File]);
+        assert_eq!(exec.program(), "foo");
     }
 
     #[test]

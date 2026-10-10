@@ -20,6 +20,9 @@ pub struct Context {
 #[derive(Debug, PartialEq)]
 pub struct Entry {
     pub name: String,
+    /// e.g. "Web Browser".
+    pub generic_name: Option<String>,
+    pub keywords: Vec<String>,
     pub exec: Exec,
     pub icon: Option<String>,
     /// `Terminal=true`: the program needs a terminal emulator.
@@ -106,6 +109,10 @@ fn parse_with(
 
     Ok(Entry {
         name: name.trim().to_string(),
+        generic_name: main
+            .locale_string("GenericName", &ctx.locale)
+            .filter(|n| !n.trim().is_empty()),
+        keywords: main.locale_list("Keywords", ';', &ctx.locale),
         exec,
         icon,
         terminal: main.bool("Terminal"),
@@ -205,6 +212,7 @@ Icon=firefox-private
         .unwrap();
 
         assert_eq!(entry.name, "Feuerfuchs");
+        assert_eq!(entry.generic_name.as_deref(), Some("Web Browser"));
         assert_eq!(argv(&entry.exec), ["firefox"]);
         assert_eq!(entry.exec.codes().len(), 1);
         assert_eq!(entry.icon.as_deref(), Some("firefox"));

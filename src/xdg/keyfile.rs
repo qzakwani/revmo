@@ -73,32 +73,20 @@ impl Group {
     /// A list value split on `sep`. Empty items are dropped and `\<sep>`
     /// escapes a literal separator.
     pub fn list(&self, key: &str, sep: char) -> Vec<String> {
-        let Some(raw) = self.raw(key) else {
-            return Vec::new();
-        };
-        let mut items = Vec::new();
-        let mut current = String::new();
-        let mut chars = raw.chars();
-        while let Some(c) = chars.next() {
-            if c == '\\' {
-                match chars.next() {
-                    Some(n) if n == sep => current.push(sep),
-                    Some(n) => {
-                        current.push('\\');
-                        current.push(n);
-                    }
-                    None => current.push('\\'),
-                }
-            } else if c == sep {
-                items.push(unescape(&current));
-                current.clear();
-            } else {
-                current.push(c);
-            }
-        }
-        items.push(unescape(&current));
-        items.retain(|s| !s.is_empty());
-        items
+        self.raw(key)
+            .map(|raw| split_list(raw, sep))
+            .unwrap_or_default()
+    }
+
+    /// Like [`Group::locale_string`], for list values such as `Keywords`.
+    pub fn locale_list(&self, key: &str, sep: char, locale: &Locale) -> Vec<String> {
+        locale
+            .candidates()
+            .iter()
+            .find_map(|l| self.raw(&format!("{key}[{l}]")))
+            .or_else(|| self.raw(key))
+            .map(|raw| split_list(raw, sep))
+            .unwrap_or_default()
     }
 
     /// The best match for a localized key (`Name[de_DE]`, `Name[de]`, ...),
@@ -110,6 +98,33 @@ impl Group {
             .find_map(|l| self.string(&format!("{key}[{l}]")))
             .or_else(|| self.string(key))
     }
+}
+
+/// Splits a raw list value on `sep`, where `\<sep>` is a literal separator.
+fn split_list(raw: &str, sep: char) -> Vec<String> {
+    let mut items = Vec::new();
+    let mut current = String::new();
+    let mut chars = raw.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some(n) if n == sep => current.push(sep),
+                Some(n) => {
+                    current.push('\\');
+                    current.push(n);
+                }
+                None => current.push('\\'),
+            }
+        } else if c == sep {
+            items.push(unescape(&current));
+            current.clear();
+        } else {
+            current.push(c);
+        }
+    }
+    items.push(unescape(&current));
+    items.retain(|s| !s.is_empty());
+    items
 }
 
 /// Escapes a string so [`unescape`] (and [`Group::list`] with `sep`) read
@@ -276,5 +291,16 @@ mod tests {
         assert_eq!(get("sr_RS@latin"), "Latinica");
         assert_eq!(get("fr_FR.UTF-8"), "Default");
         assert_eq!(get("C.UTF-8"), "Default");
+
+        let kf = KeyFile::parse("[G]\nKeywords=web;internet;\nKeywords[de]=Netz;\n");
+        let g = kf.group("G").unwrap();
+        assert_eq!(
+            g.locale_list("Keywords", ';', &Locale::parse("de_DE")),
+            ["Netz"]
+        );
+        assert_eq!(
+            g.locale_list("Keywords", ';', &Locale::parse("fr")),
+            ["web", "internet"]
+        );
     }
 }

@@ -8,6 +8,7 @@ mod parser;
 mod store;
 mod styles;
 mod theme;
+mod search;
 mod usage;
 mod xdg;
 
@@ -48,6 +49,13 @@ const WINDOW_HEIGHT: f32 = HEADER_HEIGHT + BODY_HEIGHT + FOOTER_HEIGHT;
 static USAGE_FILE: std::sync::LazyLock<std::path::PathBuf> = std::sync::LazyLock::new(|| {
     xdg::base_dirs::state_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo/usage")
 });
+
+// How much launch history counts against match quality; a full-word match
+// is worth roughly 100.
+const FRECENCY_WEIGHT: f64 = 10.0;
+
+// Actions ("New Window", ...) rank a little below their app on similar matches.
+const ACTION_WEIGHT: f64 = 0.9;
 
 const TOAST_DURATION: Duration = Duration::from_secs(5);
 
@@ -95,6 +103,8 @@ struct Revmo {
     batch_size: usize,
     /// Every app not hidden by the user, most relevant first.
     apps: Vec<App>,
+    /// Search data for each of `apps`.
+    haystacks: Vec<search::Haystack>,
     /// Indices into `apps` matching the search, in display order.
     visible: Vec<usize>,
     toast: Option<(String, ToastLevel)>,
@@ -153,6 +163,7 @@ impl Revmo {
             theme,
             batch_size: BATCH_SIZE,
             apps: vec![],
+            haystacks: vec![],
             visible: vec![],
             toast: None,
             toast_id: 0,
@@ -202,12 +213,27 @@ impl Revmo {
         self.visible.get(self.selected).map(|&i| &self.apps[i])
     }
 
-    /// Recomputes the visible apps from the search text.
+    /// Recomputes the visible apps from the search text: best matches
+    /// first, with frequently used apps winning close calls.
     fn filter(&mut self) {
-        let query = self.search.to_lowercase();
-        self.visible = (0..self.apps.len())
-            .filter(|&i| self.apps[i].name.to_lowercase().contains(&query))
+        let now = usage::now();
+        let mut scored: Vec<(f64, usize)> = self
+            .haystacks
+            .iter()
+            .enumerate()
+            .filter_map(|(i, h)| {
+                let app = &self.apps[i];
+                let mut score = h.score(&self.search)?;
+                if app.action.is_some() {
+                    score *= ACTION_WEIGHT;
+                }
+                let usage = self.usage.score(&app.key, now);
+                Some((score + FRECENCY_WEIGHT * usage.ln_1p(), i))
+            })
             .collect();
+        // Stable, so ties keep the frecency order of `apps`.
+        scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+        self.visible = scored.into_iter().map(|(_, i)| i).collect();
         self.selected = 0;
     }
 
@@ -225,6 +251,7 @@ impl Revmo {
                     let score = |app: &App| self.usage.score(&app.key, now);
                     score(b).total_cmp(&score(a))
                 });
+                self.haystacks = apps.iter().map(App::haystack).collect();
                 self.apps = apps;
                 self.is_loading = false;
                 self.filter();
@@ -292,6 +319,7 @@ impl Revmo {
             Message::RemoveApp => {
                 if let Some(&index) = self.visible.get(self.selected) {
                     let removed = self.apps.remove(index);
+                    self.haystacks.remove(index);
                     self.config.hidden.push(removed.key.clone());
                     self.config.save();
                     self.search.clear();

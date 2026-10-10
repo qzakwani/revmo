@@ -10,7 +10,7 @@ use crate::xdg::base_dirs::cache_home;
 use crate::{parser::App, HOME_DIR};
 
 // Bump when App or scanning changes, so old caches are rebuilt.
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 
 static CACHE_FILE: LazyLock<PathBuf> =
     LazyLock::new(|| cache_home(Path::new(HOME_DIR.as_str())).join("revmo/apps"));

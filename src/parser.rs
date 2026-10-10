@@ -7,6 +7,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::launch;
+use crate::search::Haystack;
 use crate::xdg::desktop_entry::{self, Context};
 use crate::xdg::exec::{split_user_args, Exec, FieldCode};
 use crate::xdg::icons::{self, IconLookup};
@@ -25,6 +26,8 @@ pub struct App {
     pub key: String,
     pub name: String,
     pub action: Option<String>,
+    pub generic_name: Option<String>,
+    pub keywords: Vec<String>,
     pub icon: Option<String>,
     pub exec: Exec,
     pub terminal: bool,
@@ -50,6 +53,21 @@ impl App {
         }
         store::store_apps(fingerprint, &apps);
         apps
+    }
+
+    /// What the search box matches against, with each text's weight.
+    pub fn haystack(&self) -> Haystack {
+        let program = self.exec.program();
+        let mut fields = vec![(self.name.as_str(), 1.0)];
+        if let Some(action) = &self.action {
+            fields.push((action.as_str(), 0.9));
+        }
+        fields.push((program.as_str(), 0.8));
+        if let Some(generic) = &self.generic_name {
+            fields.push((generic.as_str(), 0.7));
+        }
+        fields.extend(self.keywords.iter().map(|k| (k.as_str(), 0.6)));
+        Haystack::new(fields)
     }
 
     /// The file/URL arguments the app takes, in order.
@@ -121,6 +139,8 @@ fn scan(home: &Path, data_dirs: &[std::path::PathBuf]) -> Vec<App> {
             key,
             name: entry.name.clone(),
             action,
+            generic_name: entry.generic_name.clone(),
+            keywords: entry.keywords.clone(),
             icon,
             exec,
             terminal: entry.terminal,
