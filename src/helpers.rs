@@ -8,17 +8,16 @@ use iced::{
 };
 
 use crate::{
-    config, parser::App, store, styles, Message, Revmo, ToastLevel, APPS, APP_HEIGHT, APP_PADDING,
+    config, parser::App, store, styles, Message, Revmo, ToastLevel, APP_HEIGHT, APP_PADDING,
     DEFAULT_APP_ICON,
 };
 
+/// Moves the launched app to the top of the list.
 pub fn set_app_history(state: &mut Revmo, id: usize) {
-    unsafe {
-        if let Some(pos) = APPS.iter().position(|app| app.id == id) {
-            let removed = APPS.remove(pos);
-            APPS.insert(0, removed);
-            state.store = true;
-        }
+    if let Some(pos) = state.apps.iter().position(|app| app.id == id) {
+        let launched = state.apps.remove(pos);
+        state.apps.insert(0, launched);
+        state.store = true;
     }
 }
 
@@ -26,17 +25,6 @@ pub fn refresh_app() -> Option<()> {
     store::empty_app_store()?;
     config::Config::reset()?;
     Some(())
-}
-
-pub fn remove_app(state: &mut Revmo, id: usize) -> Option<(String, ToastLevel)> {
-    unsafe {
-        if let Some(pos) = APPS.iter().position(|app| app.id == id) {
-            let removed = APPS.remove(pos);
-            state.store = true;
-            return Some((format!("{} removed!", removed.name), ToastLevel::Success));
-        }
-    }
-    Some(("Error removing app!".to_string(), ToastLevel::Error))
 }
 
 pub async fn toast_task() {

@@ -1,10 +1,8 @@
-use crate::parser::App;
-
-pub fn get_batch(
-    apps: &Vec<App>,
+pub fn get_batch<T>(
+    apps: &[T],
     batch_size: usize,
     selected_index: usize,
-) -> (usize, usize, usize, &[App]) {
+) -> (usize, usize, usize, &[T]) {
     let total_batches = (apps.len() / batch_size) as usize + 1;
 
     let active_batch_index = selected_index / batch_size;

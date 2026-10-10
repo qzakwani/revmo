@@ -25,7 +25,6 @@ use parser::App;
 use styles::Icons;
 use xdg::exec::FieldCode;
 
-static mut APPS: Vec<App> = Vec::new();
 static HOME_DIR: Lazy<String> = Lazy::new(|| {
     env::var_os("HOME")
         .expect("os $HOME not found")
@@ -86,7 +85,10 @@ struct Revmo {
     selected: usize,
     theme: iced::Theme,
     batch_size: usize,
+    /// Every app, most recently launched first.
     apps: Vec<App>,
+    /// Indices into `apps` matching the search, in display order.
+    visible: Vec<usize>,
     toast: Option<(String, ToastLevel)>,
     help: bool,
     is_args: bool,
@@ -144,6 +146,7 @@ impl Revmo {
             theme: theme::get_theme(theme_id).to_owned(),
             batch_size: BATCH_SIZE,
             apps: vec![],
+            visible: vec![],
             toast: None,
             help: false,
             is_args: false,
@@ -167,6 +170,19 @@ impl Revmo {
         Task::done(Message::Exit)
     }
 
+    fn selected_app(&self) -> Option<&App> {
+        self.visible.get(self.selected).map(|&i| &self.apps[i])
+    }
+
+    /// Recomputes the visible apps from the search text.
+    fn filter(&mut self) {
+        let query = self.search.to_lowercase();
+        self.visible = (0..self.apps.len())
+            .filter(|&i| self.apps[i].name.to_lowercase().contains(&query))
+            .collect();
+        self.selected = 0;
+    }
+
     fn theme(&self) -> iced::Theme {
         self.theme.clone()
     }
@@ -174,36 +190,18 @@ impl Revmo {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::AppsLoaded(apps) => {
-                unsafe {
-                    APPS = apps.clone();
-                    self.apps = apps;
-                    self.is_loading = false;
-                }
+                self.apps = apps;
+                self.is_loading = false;
+                self.filter();
                 focus(INPUT.clone()).map(Message::Junk)
             }
             Message::SearchChanged(input) => {
                 self.search = input;
-                self.selected = 0;
-
-                unsafe {
-                    if self.search.is_empty() {
-                        self.apps = APPS.clone();
-                        return Task::none();
-                    }
-                    self.apps = APPS
-                        .iter()
-                        .filter(|app| {
-                            app.name
-                                .to_lowercase()
-                                .contains(&self.search.to_lowercase())
-                        })
-                        .cloned()
-                        .collect();
-                }
+                self.filter();
                 Task::none()
             }
 
-            Message::RunIndex => match self.apps.get(self.selected) {
+            Message::RunIndex => match self.selected_app() {
                 Some(app) => self.run(app.id, &[]),
                 None => Task::done(Message::RunFailed),
             },
@@ -212,12 +210,7 @@ impl Revmo {
                 if self.is_args {
                     return focus_next();
                 }
-                let l = if self.apps.len() > 0 {
-                    self.apps.len() - 1
-                } else {
-                    0
-                };
-                if self.selected < l {
+                if self.selected + 1 < self.visible.len() {
                     self.selected += 1;
                 }
                 Task::none()
@@ -241,7 +234,10 @@ impl Revmo {
                 if self.is_args {
                     return Task::none();
                 }
-                self.app_args = self.apps[self.selected].arg_codes();
+                self.app_args = self
+                    .selected_app()
+                    .map(App::arg_codes)
+                    .unwrap_or_default();
                 self.exec_args = vec![String::new(); self.app_args.len()];
                 self.is_args = !self.app_args.is_empty();
                 focus("0")
@@ -259,15 +255,12 @@ impl Revmo {
             Message::RunPress(id) => self.run(id, &[]),
 
             Message::RemoveApp => {
-                if let Some(app) = self.apps.get(self.selected).cloned() {
-                    self.toast = helpers::remove_app(self, app.id);
-                    if self.toast.as_ref().unwrap().1 == ToastLevel::Success {
-                        unsafe {
-                            self.selected = 0;
-                            self.search = String::new();
-                            self.apps = APPS.clone();
-                        }
-                    }
+                if let Some(&index) = self.visible.get(self.selected) {
+                    let removed = self.apps.remove(index);
+                    self.store = true;
+                    self.toast = Some((format!("{} removed!", removed.name), ToastLevel::Success));
+                    self.search.clear();
+                    self.filter();
                 }
                 Task::perform(helpers::toast_task(), Message::ToastDone)
             }
@@ -283,9 +276,7 @@ impl Revmo {
 
             Message::Exit => {
                 if self.store {
-                    unsafe {
-                        store::store_apps(APPS.as_slice());
-                    };
+                    store::store_apps(&self.apps);
                 }
                 window::get_latest().and_then(window::close)
             }
@@ -370,7 +361,9 @@ impl Revmo {
         }
 
         if self.is_args {
-            return args_page::view(self, &self.apps[self.selected]);
+            if let Some(app) = self.selected_app() {
+                return args_page::view(self, app);
+            }
         }
 
         let input = text_input("", &self.search)
@@ -394,11 +387,11 @@ impl Revmo {
         .padding([0, 20]);
 
         let (active_batch, total_batches, selected, apps) =
-            batch::get_batch(&self.apps, self.batch_size, self.selected);
+            batch::get_batch(&self.visible, self.batch_size, self.selected);
         let mut batch: Vec<Element<Message>> = Vec::with_capacity(apps.len());
 
-        for (i, app) in apps.iter().enumerate() {
-            batch.push(helpers::get_app_view(app, i == selected, &self.theme).into());
+        for (i, &index) in apps.iter().enumerate() {
+            batch.push(helpers::get_app_view(&self.apps[index], i == selected, &self.theme).into());
         }
 
         let footer = if let Some((msg, level)) = &self.toast {
