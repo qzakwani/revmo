@@ -2,14 +2,15 @@ use once_cell::sync::Lazy;
 
 use crate::{parser::App, HOME_DIR};
 
-// Bump the file name whenever scanning changes, so stale caches are rebuilt.
+// Bump the file name whenever scanning or App changes, so stale caches are rebuilt.
 static APP_STORE: Lazy<String> =
-    Lazy::new(|| format!("{}/.local/share/revmo/apps.v2.store", *HOME_DIR));
-static LEGACY_APP_STORE: Lazy<String> =
-    Lazy::new(|| format!("{}/.local/share/revmo/apps.store", *HOME_DIR));
+    Lazy::new(|| format!("{}/.local/share/revmo/apps.v3.store", *HOME_DIR));
+const LEGACY_APP_STORES: [&str; 2] = ["apps.store", "apps.v2.store"];
 
 pub fn get_apps() -> Option<Vec<App>> {
-    let _ = std::fs::remove_file(&*LEGACY_APP_STORE);
+    for legacy in LEGACY_APP_STORES {
+        let _ = std::fs::remove_file(format!("{}/.local/share/revmo/{legacy}", *HOME_DIR));
+    }
     if let Ok(v) = std::fs::read(&*APP_STORE) {
         if let Ok(apps) = bincode::deserialize::<Vec<App>>(&v) {
             if apps.is_empty() {

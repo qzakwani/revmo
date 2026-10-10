@@ -1,18 +1,14 @@
-//! Interpretation of `.desktop` files: visibility rules, actions and the
-//! `Exec` key's field codes.
+//! Interpretation of `.desktop` files: visibility rules and actions.
 //!
 //! https://specifications.freedesktop.org/desktop-entry-spec/latest/
 
 use std::path::Path;
 
 use super::base_dirs::find_executable;
+use super::exec::{EntryInfo, Exec};
 use super::keyfile::{Group, KeyFile, Locale};
 
 const MAIN_GROUP: &str = "Desktop Entry";
-
-/// Field codes that take a file or URL from the user; revmo asks for them on
-/// the args page.
-const ARG_CODES: [char; 4] = ['f', 'F', 'u', 'U'];
 
 /// The environment an entry is evaluated against.
 pub struct Context {
@@ -26,23 +22,21 @@ pub struct Entry {
     pub name: String,
     pub exec: Exec,
     pub icon: Option<String>,
+    /// `Terminal=true`: the program needs a terminal emulator.
+    pub terminal: bool,
+    /// `Path=`: the working directory to start the program in.
+    pub working_dir: Option<String>,
     pub actions: Vec<Action>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Action {
+    /// The id from `Actions=`, e.g. `new-window`.
+    pub id: String,
     pub name: String,
     pub exec: Exec,
     /// The action's own icon; callers fall back to the entry's.
     pub icon: Option<String>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Exec {
-    /// The command line with field codes expanded or removed.
-    pub command: String,
-    /// The `%f`/`%F`/`%u`/`%U` codes the command takes, in order.
-    pub args: Vec<String>,
 }
 
 /// Why an entry is not shown.
@@ -94,10 +88,14 @@ fn parse_with(
         .filter(|n| !n.trim().is_empty())
         .ok_or(Skip::MissingName)?;
     let icon = main.string("Icon").filter(|i| !i.is_empty());
+    let info = EntryInfo {
+        name: &name,
+        icon: icon.as_deref(),
+        path,
+    };
     let exec = main
         .string("Exec")
-        .map(|e| expand_exec(&e, &name, icon.as_deref(), path))
-        .filter(|e| !e.command.is_empty())
+        .and_then(|e| Exec::parse(&e, &info))
         .ok_or(Skip::MissingExec)?;
 
     let actions = main
@@ -110,6 +108,8 @@ fn parse_with(
         name: name.trim().to_string(),
         exec,
         icon,
+        terminal: main.bool("Terminal"),
+        working_dir: main.string("Path").filter(|p| !p.is_empty()),
         actions,
     })
 }
@@ -127,11 +127,14 @@ fn parse_action(
         .filter(|n| !n.trim().is_empty())?;
     let icon = group.string("Icon").filter(|i| !i.is_empty());
     // An action without Exec is only launchable over D-Bus, which revmo doesn't do.
-    let exec = group
-        .string("Exec")
-        .map(|e| expand_exec(&e, &name, icon.as_deref().or(entry_icon), path))
-        .filter(|e| !e.command.is_empty())?;
+    let info = EntryInfo {
+        name: &name,
+        icon: icon.as_deref().or(entry_icon),
+        path,
+    };
+    let exec = group.string("Exec").and_then(|e| Exec::parse(&e, &info))?;
     Some(Action {
+        id: id.to_string(),
         name: name.trim().to_string(),
         exec,
         icon,
@@ -149,44 +152,6 @@ fn shown_in(group: &Group, desktops: &[String]) -> bool {
         return false;
     }
     !matches("NotShowIn")
-}
-
-/// Expands the field codes in an (already unescaped) `Exec` value.
-///
-/// The command is run through `sh -c`, so expanded values are shell-quoted.
-/// Deprecated and unknown codes are dropped, as the spec requires.
-fn expand_exec(exec: &str, name: &str, icon: Option<&str>, path: &Path) -> Exec {
-    let mut command = String::with_capacity(exec.len());
-    let mut args = Vec::new();
-    let mut chars = exec.chars();
-    while let Some(c) = chars.next() {
-        if c != '%' {
-            command.push(c);
-            continue;
-        }
-        match chars.next() {
-            Some('%') => command.push('%'),
-            Some(code) if ARG_CODES.contains(&code) => args.push(format!("%{code}")),
-            Some('i') => {
-                if let Some(icon) = icon {
-                    command.push_str("--icon ");
-                    command.push_str(&shell_quote(icon));
-                }
-            }
-            Some('c') => command.push_str(&shell_quote(name)),
-            Some('k') => command.push_str(&shell_quote(&path.to_string_lossy())),
-            _ => {}
-        }
-    }
-    Exec {
-        // Don't collapse inner whitespace: it may be inside a quoted argument.
-        command: command.trim().to_string(),
-        args,
-    }
-}
-
-fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
 }
 
 #[cfg(test)]
@@ -209,11 +174,8 @@ mod tests {
         )
     }
 
-    fn exec(command: &str, args: &[&str]) -> Exec {
-        Exec {
-            command: command.into(),
-            args: args.iter().map(|a| a.to_string()).collect(),
-        }
+    fn argv(exec: &Exec) -> Vec<String> {
+        exec.expand(&[])
     }
 
     #[test]
@@ -227,6 +189,7 @@ Name=Firefox
 Name[de]=Feuerfuchs
 Exec=firefox %u
 Icon=firefox
+Path=/tmp
 Actions=new-window;private;missing;
 
 [Desktop Action new-window]
@@ -241,25 +204,41 @@ Icon=firefox-private
         )
         .unwrap();
 
+        assert_eq!(entry.name, "Feuerfuchs");
+        assert_eq!(argv(&entry.exec), ["firefox"]);
+        assert_eq!(entry.exec.codes().len(), 1);
+        assert_eq!(entry.icon.as_deref(), Some("firefox"));
+        assert!(!entry.terminal);
+        assert_eq!(entry.working_dir.as_deref(), Some("/tmp"));
+
+        let actions: Vec<_> = entry
+            .actions
+            .iter()
+            .map(|a| {
+                (
+                    a.id.as_str(),
+                    a.name.as_str(),
+                    argv(&a.exec),
+                    a.icon.as_deref(),
+                )
+            })
+            .collect();
         assert_eq!(
-            entry,
-            Entry {
-                name: "Feuerfuchs".into(),
-                exec: exec("firefox", &["%u"]),
-                icon: Some("firefox".into()),
-                actions: vec![
-                    Action {
-                        name: "New Window".into(),
-                        exec: exec("firefox --new-window", &["%u"]),
-                        icon: None,
-                    },
-                    Action {
-                        name: "Private".into(),
-                        exec: exec("firefox --private-window", &[]),
-                        icon: Some("firefox-private".into()),
-                    },
-                ],
-            }
+            actions,
+            [
+                (
+                    "new-window",
+                    "New Window",
+                    vec!["firefox".to_string(), "--new-window".into()],
+                    None
+                ),
+                (
+                    "private",
+                    "Private",
+                    vec!["firefox".into(), "--private-window".into()],
+                    Some("firefox-private")
+                ),
+            ]
         );
     }
 
@@ -270,6 +249,7 @@ Icon=firefox-private
 Type=Application
 Name=App
 Exec=app
+Terminal=true
 
 [X-Vendor Group]
 Exec=evil
@@ -280,7 +260,8 @@ Exec=app --unlisted
 ",
         )
         .unwrap();
-        assert_eq!(entry.exec, exec("app", &[]));
+        assert_eq!(argv(&entry.exec), ["app"]);
+        assert!(entry.terminal);
         assert!(entry.actions.is_empty());
     }
 
@@ -315,39 +296,23 @@ Exec=app --unlisted
             Some(Skip::MissingExec)
         );
         assert_eq!(
+            parse_str("[Desktop Entry]\nType=Application\nName=App\nExec=app \"open\n").err(),
+            Some(Skip::MissingExec)
+        );
+        assert_eq!(
             parse_str("[Other]\nName=App\n").err(),
             Some(Skip::NoMainGroup)
         );
     }
 
     #[test]
-    fn expands_field_codes() {
-        let path = Path::new("/apps/it's.desktop");
-        assert_eq!(
-            expand_exec(
-                "app %F --name %c %i %k 100%% %d %x",
-                "My App",
-                Some("app-icon"),
-                path
-            ),
-            exec(
-                r#"app  --name 'My App' --icon 'app-icon' '/apps/it'\''s.desktop' 100%"#,
-                &["%F"]
-            )
-        );
-        assert_eq!(
-            expand_exec("app %i %U %f", "A", None, path),
-            exec("app", &["%U", "%f"])
-        );
-    }
-
-    #[test]
-    fn keeps_exec_quoting_and_unescapes_once() {
-        // `\\\\` in the file is `\\` after string unescaping, which sh reads as one `\`.
+    fn unescapes_strings_before_exec_quoting() {
+        // `\\\\` in the file is `\\` after string unescaping, which the Exec
+        // quoting rules turn into one `\`.
         let entry = parse_str(
             "[Desktop Entry]\nType=Application\nName=App\nExec=sh -c \"echo \\\\\\\\$HOME\"\n",
         )
         .unwrap();
-        assert_eq!(entry.exec.command, r#"sh -c "echo \\$HOME""#);
+        assert_eq!(argv(&entry.exec), ["sh", "-c", "echo \\$HOME"]);
     }
 }

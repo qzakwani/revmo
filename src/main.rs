@@ -3,6 +3,7 @@ mod batch;
 mod config;
 mod help_page;
 mod helpers;
+mod launch;
 mod parser;
 mod store;
 mod styles;
@@ -22,6 +23,7 @@ use iced::{Fill, Theme};
 use once_cell::sync::Lazy;
 use parser::App;
 use styles::Icons;
+use xdg::exec::FieldCode;
 
 static mut APPS: Vec<App> = Vec::new();
 static HOME_DIR: Lazy<String> = Lazy::new(|| {
@@ -88,7 +90,7 @@ struct Revmo {
     toast: Option<(String, ToastLevel)>,
     help: bool,
     is_args: bool,
-    app_args: Vec<String>,
+    app_args: Vec<FieldCode>,
     exec_args: Vec<String>,
     store: bool,
     is_loading: bool,
@@ -110,8 +112,8 @@ enum Message {
     ViewArgs,
     HideArgs,
     ArgsChange(usize, String),
-    RunWithArgs(usize, String, Vec<String>),
-    RunPress(usize, String),
+    RunWithArgs(usize, Vec<String>),
+    RunPress(usize),
     RemoveApp,
     RunFailed,
     Refresh,
@@ -152,6 +154,19 @@ impl Revmo {
         }
     }
 
+    /// Launches the app with the given id and closes revmo on success.
+    fn run(&mut self, id: usize, inputs: &[String]) -> Task<Message> {
+        let Some(app) = self.apps.iter().find(|a| a.id == id) else {
+            return Task::done(Message::RunFailed);
+        };
+        if let Err(err) = app.launch(inputs) {
+            eprintln!("Error: failed to launch {}: {err}", app.name);
+            return Task::done(Message::RunFailed);
+        }
+        helpers::set_app_history(self, id);
+        Task::done(Message::Exit)
+    }
+
     fn theme(&self) -> iced::Theme {
         self.theme.clone()
     }
@@ -188,13 +203,10 @@ impl Revmo {
                 Task::none()
             }
 
-            Message::RunIndex => {
-                if let Some(app) = self.apps.get(self.selected).cloned() {
-                    helpers::set_app_history(self, app.id);
-                    return Task::done(run(app.exec, None));
-                }
-                Task::done(Message::RunFailed)
-            }
+            Message::RunIndex => match self.apps.get(self.selected) {
+                Some(app) => self.run(app.id, &[]),
+                None => Task::done(Message::RunFailed),
+            },
 
             Message::SelectDown => {
                 if self.is_args {
@@ -229,19 +241,9 @@ impl Revmo {
                 if self.is_args {
                     return Task::none();
                 }
-                self.is_args = if self.apps[self.selected].args.is_some() {
-                    self.app_args = self.apps[self.selected]
-                        .args
-                        .clone()
-                        .unwrap()
-                        .split(',')
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>();
-                    self.exec_args = vec!["".to_string(); self.app_args.len()];
-                    true
-                } else {
-                    false
-                };
+                self.app_args = self.apps[self.selected].arg_codes();
+                self.exec_args = vec![String::new(); self.app_args.len()];
+                self.is_args = !self.app_args.is_empty();
                 focus("0")
             }
 
@@ -252,15 +254,9 @@ impl Revmo {
                 focus(INPUT.clone())
             }
 
-            Message::RunWithArgs(id, exec, args) => {
-                helpers::set_app_history(self, id);
-                Task::done(run(exec, Some(args)))
-            }
+            Message::RunWithArgs(id, args) => self.run(id, &args),
 
-            Message::RunPress(id, exec) => {
-                helpers::set_app_history(self, id);
-                Task::done(run(exec, None))
-            }
+            Message::RunPress(id) => self.run(id, &[]),
 
             Message::RemoveApp => {
                 if let Some(app) = self.apps.get(self.selected).cloned() {
@@ -446,25 +442,4 @@ impl Revmo {
         .width(Fill)
         .into()
     }
-}
-
-fn run(exec: String, args: Option<Vec<String>>) -> Message {
-    let mut binding = std::process::Command::new("sh");
-
-    let mut command = exec;
-    if args.is_some() {
-        for arg in args.unwrap() {
-            command.push_str(" ");
-            command.push_str(&arg);
-        }
-    }
-
-    binding.arg("-c").arg(command);
-
-    if let Err(err) = binding.spawn() {
-        eprintln!("Error: {:?}", err);
-        return Message::RunFailed;
-    }
-
-    Message::Exit
 }

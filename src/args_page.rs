@@ -1,26 +1,12 @@
-use std::collections::HashMap;
-
 use iced::widget::{button, column, container, row, svg, text, text_input, Space};
 use iced::Length::Fill;
 use iced::{border, padding, Alignment, Element};
-use once_cell::sync::Lazy;
 
 use crate::{helpers, styles, Revmo, FOOTER_HEIGHT, LAUNCH_ICON};
 use crate::{parser::App, Message};
 
-static ARGS: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
-    HashMap::from({
-        [
-            ("%f", "single file"),
-            ("%F", "list of files"),
-            ("%u", "single url"),
-            ("%U", "list of URLs"),
-        ]
-    })
-});
-
 pub fn view<'a>(state: &'a Revmo, app: &'a App) -> Element<'a, Message> {
-    if app.args.is_none() {
+    if state.app_args.is_empty() {
         return column![].into();
     }
     let header = column([
@@ -34,22 +20,17 @@ pub fn view<'a>(state: &'a Revmo, app: &'a App) -> Element<'a, Message> {
     .spacing(20);
 
     let mut inputs: Vec<Element<'a, Message>> = Vec::new();
-    for (i, arg) in state.app_args.iter().enumerate() {
+    for (i, code) in state.app_args.iter().enumerate() {
         inputs.push(
             row![
-                text(format!("{}: ", arg)).size(20).font(styles::FONT_BOLD),
-                text_input(
-                    ARGS.get(arg.as_str()).unwrap_or(&"unknown"),
-                    &state.exec_args[i]
-                )
-                .id(i.to_string())
-                .padding(12)
-                .on_input(move |input| Message::ArgsChange(i, input))
-                .on_submit(Message::RunWithArgs(
-                    app.id.clone(),
-                    app.exec.clone(),
-                    state.exec_args.clone()
-                ))
+                text(format!("{}: ", code.as_str()))
+                    .size(20)
+                    .font(styles::FONT_BOLD),
+                text_input(code.description(), &state.exec_args[i])
+                    .id(i.to_string())
+                    .padding(12)
+                    .on_input(move |input| Message::ArgsChange(i, input))
+                    .on_submit(Message::RunWithArgs(app.id, state.exec_args.clone()))
             ]
             .align_y(Alignment::Center)
             .into(),
@@ -77,7 +58,7 @@ pub fn view<'a>(state: &'a Revmo, app: &'a App) -> Element<'a, Message> {
         border: border::rounded(10),
         ..button::primary(t, s)
     })
-    .on_press_with(|| Message::RunPress(app.id.clone(), app.exec.clone()));
+    .on_press_with(|| Message::RunWithArgs(app.id, state.exec_args.clone()));
 
     let footer = if let Some((msg, level)) = &state.toast {
         helpers::show_toast(msg.clone(), level.clone(), &state.theme)

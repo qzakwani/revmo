@@ -80,7 +80,7 @@ pub fn get_app_view<'a>(app: &'a App, selected: bool, theme: &'a Theme) -> Conta
                 icon,
                 Space::with_width(6),
                 button(get_inner_button(app, theme, true))
-                    .on_press(Message::RunPress(app.id.clone(), app.exec.clone()))
+                    .on_press(Message::RunPress(app.id))
                     .style(|_, _| styles::UNSELECTED_STYLE.clone())
                     .width(Fill)
             ]
@@ -97,7 +97,7 @@ pub fn get_app_view<'a>(app: &'a App, selected: bool, theme: &'a Theme) -> Conta
                 icon,
                 Space::with_width(6),
                 button(get_inner_button(app, theme, false))
-                    .on_press(Message::RunPress(app.id.clone(), app.exec.clone()))
+                    .on_press(Message::RunPress(app.id))
                     .width(Fill)
                     .style(|_, _| styles::UNSELECTED_STYLE.clone())
             ]
@@ -140,6 +140,14 @@ pub fn view_app_icon(icon: Option<String>) -> Element<'static, Message> {
 }
 
 fn get_inner_button<'a>(app: &'a App, theme: &'a Theme, selected: bool) -> Column<'a, Message> {
+    let codes = app.arg_codes();
+    let args = (!codes.is_empty()).then(|| {
+        codes
+            .iter()
+            .map(|c| c.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
+    });
     let mut inner = column![if selected {
         text(app.name.clone())
             .size(styles::PRIMARY_FONT_SIZE)
@@ -153,7 +161,7 @@ fn get_inner_button<'a>(app: &'a App, theme: &'a Theme, selected: bool) -> Colum
             .color(theme.palette().text)
     }];
 
-    if app.action.is_some() && app.args.is_some() {
+    if app.action.is_some() && args.is_some() {
         inner = inner.push(
             row![
                 text(format!("{} {}", '\u{f140b}', app.action.clone().unwrap()))
@@ -163,7 +171,7 @@ fn get_inner_button<'a>(app: &'a App, theme: &'a Theme, selected: bool) -> Colum
                     } else {
                         theme.palette().text
                     }),
-                text(format!("{} {}", '\u{f061}', app.args.clone().unwrap()))
+                text(format!("{} {}", '\u{f061}', args.clone().unwrap()))
                     .size(styles::SECONDARY_FONT_SIZE)
                     .color(if selected {
                         styles::selected_color(theme)
@@ -189,7 +197,7 @@ fn get_inner_button<'a>(app: &'a App, theme: &'a Theme, selected: bool) -> Colum
         );
     }
 
-    if let Some(args) = &app.args {
+    if let Some(args) = &args {
         inner = inner.push(
             text(format!("{} {}", '\u{f061}', args))
                 .size(styles::SECONDARY_FONT_SIZE)
