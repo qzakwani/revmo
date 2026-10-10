@@ -1,5 +1,6 @@
-use std::{thread, time::Duration};
+use std::thread;
 
+use iced::futures::channel::oneshot;
 use iced::{
     widget::{button, column, container, image, row, svg, text, Column, Container, Space},
     Alignment, Color, Element,
@@ -27,8 +28,16 @@ pub fn refresh_app() -> Option<()> {
     Some(())
 }
 
-pub async fn toast_task() {
-    thread::sleep(Duration::from_secs(5));
+/// Runs blocking work on its own thread. iced's default executor is a small
+/// thread pool, so sleeping or doing file IO inside a future would stall it.
+pub fn on_thread<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> impl std::future::Future<Output = T> {
+    let (tx, rx) = oneshot::channel();
+    thread::spawn(move || {
+        let _ = tx.send(work());
+    });
+    async move { rx.await.expect("worker thread panicked") }
 }
 
 pub fn show_toast(msg: String, level: ToastLevel, t: &Theme) -> Container<Message> {

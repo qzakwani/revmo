@@ -27,7 +27,8 @@ pub struct App {
 }
 
 impl App {
-    pub async fn get() -> Vec<App> {
+    /// The cached apps, or a fresh scan. Blocks on file IO.
+    pub fn get() -> Vec<App> {
         if let Some(apps) = store::get_apps() {
             return apps;
         }

@@ -11,7 +11,8 @@ mod theme;
 mod xdg;
 
 // use std::time::Instant;
-use std::{env, vec};
+use std::time::Duration;
+use std::{env, thread, vec};
 
 use iced::keyboard::key::{Key, Named};
 use iced::widget::text_input::focus;
@@ -42,6 +43,8 @@ const HEADER_HEIGHT: f32 = 60.0;
 const BODY_HEIGHT: f32 = BATCH_SIZE as f32 * APP_HEIGHT;
 const FOOTER_HEIGHT: f32 = 40.0;
 const WINDOW_HEIGHT: f32 = HEADER_HEIGHT + BODY_HEIGHT + FOOTER_HEIGHT;
+
+const TOAST_DURATION: Duration = Duration::from_secs(5);
 
 const LAUNCH_ICON: &[u8] = include_bytes!("../assets/launch.svg");
 
@@ -90,6 +93,8 @@ struct Revmo {
     /// Indices into `apps` matching the search, in display order.
     visible: Vec<usize>,
     toast: Option<(String, ToastLevel)>,
+    /// Incremented per toast, so a timer only clears the toast it was started for.
+    toast_id: u64,
     help: bool,
     is_args: bool,
     app_args: Vec<FieldCode>,
@@ -121,7 +126,7 @@ enum Message {
     Refresh,
     Exit,
     HelpPage,
-    ToastDone(()),
+    ToastDone(u64),
     Junk(()),
     ForwardTheme,
     BackwardTheme,
@@ -132,7 +137,7 @@ impl Revmo {
     fn new() -> (Self, Task<Message>) {
         (
             Revmo::_new(),
-            Task::perform(App::get(), Message::AppsLoaded),
+            load_apps(),
         )
     }
 
@@ -148,6 +153,7 @@ impl Revmo {
             apps: vec![],
             visible: vec![],
             toast: None,
+            toast_id: 0,
             help: false,
             is_args: false,
             app_args: Vec::new(),
@@ -168,6 +174,16 @@ impl Revmo {
         }
         helpers::set_app_history(self, id);
         Task::done(Message::Exit)
+    }
+
+    /// Shows a toast and starts the timer that hides it.
+    fn notify(&mut self, msg: String, level: ToastLevel) -> Task<Message> {
+        self.toast_id += 1;
+        self.toast = Some((msg, level));
+        let id = self.toast_id;
+        Task::perform(helpers::on_thread(|| thread::sleep(TOAST_DURATION)), move |_| {
+            Message::ToastDone(id)
+        })
     }
 
     fn selected_app(&self) -> Option<&App> {
@@ -258,19 +274,21 @@ impl Revmo {
                 if let Some(&index) = self.visible.get(self.selected) {
                     let removed = self.apps.remove(index);
                     self.store = true;
-                    self.toast = Some((format!("{} removed!", removed.name), ToastLevel::Success));
                     self.search.clear();
                     self.filter();
+                    return self.notify(format!("{} removed!", removed.name), ToastLevel::Success);
                 }
-                Task::perform(helpers::toast_task(), Message::ToastDone)
+                Task::none()
             }
             Message::HelpPage => {
                 self.help = !self.help;
                 Task::none()
             }
 
-            Message::ToastDone(_) => {
-                self.toast = None;
+            Message::ToastDone(id) => {
+                if id == self.toast_id {
+                    self.toast = None;
+                }
                 Task::none()
             }
 
@@ -283,21 +301,19 @@ impl Revmo {
 
             Message::Junk(_) => Task::none(),
             Message::RunFailed => {
-                self.toast = Some(("Failed to launch app!".to_string(), ToastLevel::Error));
-                Task::perform(helpers::toast_task(), Message::ToastDone)
+                self.notify("Failed to launch app!".into(), ToastLevel::Error)
             }
 
             Message::Refresh => {
                 let res = helpers::refresh_app();
                 if res.is_none() {
-                    self.toast = Some(("Failed to refresh app!".to_string(), ToastLevel::Error));
-                    return Task::perform(helpers::toast_task(), Message::ToastDone);
+                    return self.notify("Failed to refresh app!".into(), ToastLevel::Error);
                 }
+                let toast_id = self.toast_id;
                 *self = Revmo::_new();
-                self.toast = Some(("Revmo is refreshed.".to_string(), ToastLevel::Success));
-
-                Task::perform(App::get(), Message::AppsLoaded)
-                    .chain(Task::perform(helpers::toast_task(), Message::ToastDone))
+                self.toast_id = toast_id;
+                let toast = self.notify("Revmo is refreshed.".into(), ToastLevel::Success);
+                Task::batch([load_apps(), toast])
             }
 
             Message::ForwardTheme => {
@@ -435,4 +451,9 @@ impl Revmo {
         .width(Fill)
         .into()
     }
+}
+
+/// Scans (or loads the cached) apps off the UI thread.
+fn load_apps() -> Task<Message> {
+    Task::perform(helpers::on_thread(App::get), Message::AppsLoaded)
 }
