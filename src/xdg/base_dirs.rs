@@ -8,6 +8,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 const DEFAULT_DATA_DIRS: &str = "/usr/local/share:/usr/share";
 // Directories that are not always in $XDG_DATA_DIRS (e.g. when revmo is
@@ -125,10 +126,57 @@ pub fn current_desktops() -> Vec<String> {
 
 /// `$XDG_CONFIG_HOME`, defaulting to `~/.config`.
 pub fn config_home(home: &Path) -> PathBuf {
-    env::var_os("XDG_CONFIG_HOME")
+    env_dir("XDG_CONFIG_HOME", home, ".config")
+}
+
+/// `$XDG_STATE_HOME`, defaulting to `~/.local/state`.
+pub fn state_home(home: &Path) -> PathBuf {
+    env_dir("XDG_STATE_HOME", home, ".local/state")
+}
+
+/// `$XDG_CACHE_HOME`, defaulting to `~/.cache`.
+pub fn cache_home(home: &Path) -> PathBuf {
+    env_dir("XDG_CACHE_HOME", home, ".cache")
+}
+
+fn env_dir(var: &str, home: &Path, default: &str) -> PathBuf {
+    env::var_os(var)
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| home.join(".config"))
+        .unwrap_or_else(|| home.join(default))
+}
+
+/// Modification times of every file and directory under the data dirs'
+/// `applications` folders. Any install, removal or edit of a desktop file
+/// changes this list.
+pub fn applications_mtimes(data_dirs: &[PathBuf]) -> Vec<(PathBuf, Option<SystemTime>)> {
+    fn walk(dir: &Path, depth: usize, out: &mut Vec<(PathBuf, Option<SystemTime>)>) {
+        out.push((
+            dir.to_path_buf(),
+            fs::metadata(dir).and_then(|m| m.modified()).ok(),
+        ));
+        if depth > MAX_DEPTH {
+            return;
+        }
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+        paths.sort();
+        for path in paths {
+            if path.is_dir() {
+                walk(&path, depth + 1, out);
+            } else {
+                let mtime = fs::metadata(&path).and_then(|m| m.modified()).ok();
+                out.push((path, mtime));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for dir in data_dirs {
+        walk(&dir.join("applications"), 0, &mut out);
+    }
+    out
 }
 
 /// Whether `program` names an executable file, either as a path or via `$PATH`.

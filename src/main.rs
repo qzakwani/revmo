@@ -8,6 +8,7 @@ mod parser;
 mod store;
 mod styles;
 mod theme;
+mod usage;
 mod xdg;
 
 // use std::time::Instant;
@@ -43,6 +44,10 @@ const HEADER_HEIGHT: f32 = 60.0;
 const BODY_HEIGHT: f32 = BATCH_SIZE as f32 * APP_HEIGHT;
 const FOOTER_HEIGHT: f32 = 40.0;
 const WINDOW_HEIGHT: f32 = HEADER_HEIGHT + BODY_HEIGHT + FOOTER_HEIGHT;
+
+static USAGE_FILE: std::sync::LazyLock<std::path::PathBuf> = std::sync::LazyLock::new(|| {
+    xdg::base_dirs::state_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo/usage")
+});
 
 const TOAST_DURATION: Duration = Duration::from_secs(5);
 
@@ -88,7 +93,7 @@ struct Revmo {
     selected: usize,
     theme: iced::Theme,
     batch_size: usize,
-    /// Every app, most recently launched first.
+    /// Every app not hidden by the user, most relevant first.
     apps: Vec<App>,
     /// Indices into `apps` matching the search, in display order.
     visible: Vec<usize>,
@@ -99,7 +104,7 @@ struct Revmo {
     is_args: bool,
     app_args: Vec<FieldCode>,
     exec_args: Vec<String>,
-    store: bool,
+    usage: usage::Usage,
     is_loading: bool,
 }
 
@@ -135,20 +140,17 @@ enum Message {
 
 impl Revmo {
     fn new() -> (Self, Task<Message>) {
-        (
-            Revmo::_new(),
-            load_apps(),
-        )
+        (Revmo::_new(), load_apps(false))
     }
 
     fn _new() -> Self {
-        let c = config::Config::load();
-        let theme_id = c.theme_id;
+        let config = config::Config::load();
+        let theme = theme::by_name(&config.theme).clone();
         Self {
-            config: c,
+            config,
             search: String::new(),
             selected: 0,
-            theme: theme::get_theme(theme_id).to_owned(),
+            theme,
             batch_size: BATCH_SIZE,
             apps: vec![],
             visible: vec![],
@@ -158,7 +160,7 @@ impl Revmo {
             is_args: false,
             app_args: Vec::new(),
             exec_args: Vec::new(),
-            store: false,
+            usage: usage::Usage::load(&USAGE_FILE),
             is_loading: true,
         }
     }
@@ -172,7 +174,11 @@ impl Revmo {
             eprintln!("Error: failed to launch {}: {err}", app.name);
             return Task::done(Message::RunFailed);
         }
-        helpers::set_app_history(self, id);
+        let key = app.key.clone();
+        self.usage.record(&key, usage::now());
+        if let Err(e) = self.usage.save(&USAGE_FILE) {
+            eprintln!("Failed to save {}: {e}", USAGE_FILE.display());
+        }
         Task::done(Message::Exit)
     }
 
@@ -184,6 +190,12 @@ impl Revmo {
         Task::perform(helpers::on_thread(|| thread::sleep(TOAST_DURATION)), move |_| {
             Message::ToastDone(id)
         })
+    }
+
+    fn set_theme(&mut self, theme: Theme) {
+        self.config.theme = theme.to_string();
+        self.config.save();
+        self.theme = theme;
     }
 
     fn selected_app(&self) -> Option<&App> {
@@ -205,7 +217,14 @@ impl Revmo {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::AppsLoaded(apps) => {
+            Message::AppsLoaded(mut apps) => {
+                apps.retain(|a| !self.config.hidden.contains(&a.key));
+                // Stable sort: apps never launched stay alphabetical.
+                let now = usage::now();
+                apps.sort_by(|a, b| {
+                    let score = |app: &App| self.usage.score(&app.key, now);
+                    score(b).total_cmp(&score(a))
+                });
                 self.apps = apps;
                 self.is_loading = false;
                 self.filter();
@@ -273,7 +292,8 @@ impl Revmo {
             Message::RemoveApp => {
                 if let Some(&index) = self.visible.get(self.selected) {
                     let removed = self.apps.remove(index);
-                    self.store = true;
+                    self.config.hidden.push(removed.key.clone());
+                    self.config.save();
                     self.search.clear();
                     self.filter();
                     return self.notify(format!("{} removed!", removed.name), ToastLevel::Success);
@@ -292,12 +312,7 @@ impl Revmo {
                 Task::none()
             }
 
-            Message::Exit => {
-                if self.store {
-                    store::store_apps(&self.apps);
-                }
-                window::get_latest().and_then(window::close)
-            }
+            Message::Exit => window::get_latest().and_then(window::close),
 
             Message::Junk(_) => Task::none(),
             Message::RunFailed => {
@@ -305,30 +320,22 @@ impl Revmo {
             }
 
             Message::Refresh => {
-                let res = helpers::refresh_app();
-                if res.is_none() {
-                    return self.notify("Failed to refresh app!".into(), ToastLevel::Error);
-                }
-                let toast_id = self.toast_id;
-                *self = Revmo::_new();
-                self.toast_id = toast_id;
-                let toast = self.notify("Revmo is refreshed.".into(), ToastLevel::Success);
-                Task::batch([load_apps(), toast])
+                // Rescan only: history, removed apps and the theme stay.
+                self.search.clear();
+                self.visible.clear();
+                self.selected = 0;
+                self.is_loading = true;
+                let toast = self.notify("Apps rescanned.".into(), ToastLevel::Success);
+                Task::batch([load_apps(true), toast])
             }
 
             Message::ForwardTheme => {
-                let (theme, i) = theme::forward_theme(self.config.theme_id);
-                self.theme = theme.to_owned();
-                self.config.theme_id = i;
-                self.config.save();
+                self.set_theme(theme::next(&self.theme).clone());
                 Task::none()
             }
 
             Message::BackwardTheme => {
-                let (theme, i) = theme::backward_theme(self.config.theme_id);
-                self.theme = theme.to_owned();
-                self.config.theme_id = i;
-                self.config.save();
+                self.set_theme(theme::previous(&self.theme).clone());
                 Task::none()
             } // Message::Resized(size) => {
               // self.batch_size = helpers::batch_size(size.height, APP_HEIGHT);
@@ -454,6 +461,9 @@ impl Revmo {
 }
 
 /// Scans (or loads the cached) apps off the UI thread.
-fn load_apps() -> Task<Message> {
-    Task::perform(helpers::on_thread(App::get), Message::AppsLoaded)
+fn load_apps(force_scan: bool) -> Task<Message> {
+    Task::perform(
+        helpers::on_thread(move || App::get(force_scan)),
+        Message::AppsLoaded,
+    )
 }

@@ -32,7 +32,7 @@ pub fn view(state: &Revmo) -> Element<'static, Message> {
                     keyboard_shortcut_exp("View/Edit selected app's arguments"),
                     keyboard_shortcut_exp("Close Revmo"),
                     keyboard_shortcut_exp("View/Hide this help page"),
-                    keyboard_shortcut_exp("Refresh Revmo: reset to defaults"),
+                    keyboard_shortcut_exp("Rescan installed apps"),
                     keyboard_shortcut_exp("Remove selected app from Revmo"),
                     keyboard_shortcut_exp("Next theme"),
                     keyboard_shortcut_exp("Previous theme"),

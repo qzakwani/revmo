@@ -112,6 +112,28 @@ impl Group {
     }
 }
 
+/// Escapes a string so [`unescape`] (and [`Group::list`] with `sep`) read
+/// it back unchanged.
+pub fn escape(value: &str, sep: Option<char>) -> String {
+    let mut out = String::with_capacity(value.len());
+    for (i, c) in value.chars().enumerate() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            // Leading spaces would be trimmed when the value is read back.
+            ' ' if i == 0 => out.push_str("\\s"),
+            c if Some(c) == sep => {
+                out.push('\\');
+                out.push(c);
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 /// Expands the escape sequences allowed in string values.
 pub fn unescape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
@@ -217,6 +239,20 @@ mod tests {
     fn unescapes_values() {
         assert_eq!(unescape(r"a\sb\\c\td"), "a b\\c\td");
         assert_eq!(unescape(r#"say \"hi\""#), r#"say \"hi\""#);
+    }
+
+    #[test]
+    fn escape_round_trips() {
+        for value in [" lead", "a\\b", "tab\there", "line\nbreak", "semi;colon"] {
+            let kf = KeyFile::parse(&format!(
+                "[G]\nV={}\nL={};x\n",
+                escape(value, None),
+                escape(value, Some(';'))
+            ));
+            let g = kf.group("G").unwrap();
+            assert_eq!(g.string("V").as_deref(), Some(value));
+            assert_eq!(g.list("L", ';'), [value, "x"]);
+        }
     }
 
     #[test]

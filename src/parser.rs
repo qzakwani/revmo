@@ -1,4 +1,6 @@
+use std::env;
 use std::fs::read_to_string;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io;
 use std::path::Path;
 
@@ -18,6 +20,9 @@ const ICON_LOOKUP_SIZE: u32 = 64;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct App {
     pub id: usize,
+    /// Stable identity across rescans: the desktop file ID, plus
+    /// `/<action id>` for actions.
+    pub key: String,
     pub name: String,
     pub action: Option<String>,
     pub icon: Option<String>,
@@ -27,17 +32,23 @@ pub struct App {
 }
 
 impl App {
-    /// The cached apps, or a fresh scan. Blocks on file IO.
-    pub fn get() -> Vec<App> {
-        if let Some(apps) = store::get_apps() {
-            return apps;
+    /// The cached apps if nothing changed since they were scanned, else a
+    /// fresh scan. Blocks on file IO.
+    pub fn get(force_scan: bool) -> Vec<App> {
+        let home = Path::new(HOME_DIR.as_str());
+        let data_dirs = base_dirs::data_dirs(home);
+        let fingerprint = fingerprint(&data_dirs);
+        if !force_scan {
+            if let Some(apps) = store::get_apps(fingerprint) {
+                return apps;
+            }
         }
-        let mut apps = scan();
+        let mut apps = scan(home, &data_dirs);
         apps.sort_by_cached_key(|a| a.name.to_lowercase());
         for (i, app) in apps.iter_mut().enumerate() {
             app.id = i;
         }
-        store::store_apps(&apps);
+        store::store_apps(fingerprint, &apps);
         apps
     }
 
@@ -67,21 +78,32 @@ impl App {
     }
 }
 
-fn scan() -> Vec<App> {
-    let home = Path::new(HOME_DIR.as_str());
-    let data_dirs = base_dirs::data_dirs(home);
+/// Changes whenever a desktop file is added, removed or edited, or the
+/// environment that decides how they're read changes. Icon theme changes
+/// aren't tracked; Ctrl+R rescans.
+fn fingerprint(data_dirs: &[std::path::PathBuf]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    for var in ["XDG_CURRENT_DESKTOP", "LC_ALL", "LC_MESSAGES", "LANG"] {
+        env::var_os(var).hash(&mut hasher);
+    }
+    data_dirs.hash(&mut hasher);
+    base_dirs::applications_mtimes(data_dirs).hash(&mut hasher);
+    hasher.finish()
+}
+
+fn scan(home: &Path, data_dirs: &[std::path::PathBuf]) -> Vec<App> {
     let ctx = Context {
         locale: Locale::from_env(),
         desktops: base_dirs::current_desktops(),
     };
     let icons = IconLookup::new(
         &icons::current_theme(home),
-        icons::base_dirs(home, &data_dirs),
+        icons::base_dirs(home, data_dirs),
         ICON_LOOKUP_SIZE,
     );
 
     let mut apps = Vec::new();
-    for file in base_dirs::desktop_files(&data_dirs) {
+    for file in base_dirs::desktop_files(data_dirs) {
         let Ok(contents) = read_to_string(&file.path) else {
             eprintln!("Error: can't read {}", file.path.display());
             continue;
@@ -94,8 +116,9 @@ fn scan() -> Vec<App> {
 
         let icon = entry.icon.as_deref().and_then(|i| icons.find(i));
         let icon = icon.map(|p| p.to_string_lossy().into_owned());
-        let app = |action: Option<String>, exec: Exec, icon: Option<String>| App {
+        let app = |key: String, action: Option<String>, exec: Exec, icon: Option<String>| App {
             id: 0,
+            key,
             name: entry.name.clone(),
             action,
             icon,
@@ -103,7 +126,7 @@ fn scan() -> Vec<App> {
             terminal: entry.terminal,
             working_dir: entry.working_dir.clone(),
         };
-        apps.push(app(None, entry.exec.clone(), icon.clone()));
+        apps.push(app(file.id.clone(), None, entry.exec.clone(), icon.clone()));
         for action in &entry.actions {
             let action_icon = action
                 .icon
@@ -112,6 +135,7 @@ fn scan() -> Vec<App> {
                 .map(|p| p.to_string_lossy().into_owned())
                 .or_else(|| icon.clone());
             apps.push(app(
+                format!("{}/{}", file.id, action.id),
                 Some(action.name.clone()),
                 action.exec.clone(),
                 action_icon,

@@ -8,25 +8,7 @@ use iced::{
     Theme,
 };
 
-use crate::{
-    config, parser::App, store, styles, Message, Revmo, ToastLevel, APP_HEIGHT, APP_PADDING,
-    DEFAULT_APP_ICON,
-};
-
-/// Moves the launched app to the top of the list.
-pub fn set_app_history(state: &mut Revmo, id: usize) {
-    if let Some(pos) = state.apps.iter().position(|app| app.id == id) {
-        let launched = state.apps.remove(pos);
-        state.apps.insert(0, launched);
-        state.store = true;
-    }
-}
-
-pub fn refresh_app() -> Option<()> {
-    store::empty_app_store()?;
-    config::Config::reset()?;
-    Some(())
-}
+use crate::{parser::App, styles, Message, ToastLevel, APP_HEIGHT, APP_PADDING, DEFAULT_APP_ICON};
 
 /// Runs blocking work on its own thread. iced's default executor is a small
 /// thread pool, so sleeping or doing file IO inside a future would stall it.
