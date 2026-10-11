@@ -1,7 +1,7 @@
 use crate::styles::{self, Icons};
 use crate::{Message, Revmo};
-use iced::widget::{column, container, row, text, Space, Text};
 use iced::Length::Fill;
+use iced::widget::{Space, Text, column, container, row, text};
 use iced::{Alignment, Element};
 
 const CELL_HEIGHT: f32 = 30.0;
@@ -13,7 +13,7 @@ pub fn view(state: &Revmo) -> Element<'static, Message> {
             Icons::get_logo(),
             text("Developed by github.com/qzakwani").font(styles::FONT_BOLD),
             text("For updates visit: github.com/qzakwani/revmo").font(styles::FONT_BOLD),
-            Space::with_height(20),
+            Space::new().height(20),
             text(format!("Selected theme: {}", state.theme)),
             text("Keyboard shortcuts:"),
             row![
@@ -32,7 +32,7 @@ pub fn view(state: &Revmo) -> Element<'static, Message> {
                     keyboard_shortcut_exp("View/Edit selected app's arguments"),
                     keyboard_shortcut_exp("Close Revmo"),
                     keyboard_shortcut_exp("View/Hide this help page"),
-                    keyboard_shortcut_exp("Refresh Revmo: reset to defaults"),
+                    keyboard_shortcut_exp("Rescan installed apps"),
                     keyboard_shortcut_exp("Remove selected app from Revmo"),
                     keyboard_shortcut_exp("Next theme"),
                     keyboard_shortcut_exp("Previous theme"),
@@ -50,12 +50,12 @@ pub fn view(state: &Revmo) -> Element<'static, Message> {
     .into()
 }
 
-fn keyboard_shortcut(icon: &str) -> Text {
+fn keyboard_shortcut(icon: &str) -> Text<'_> {
     text(icon)
         .size(ICON_SIZE)
         .height(CELL_HEIGHT)
         .align_y(Alignment::Center)
 }
-fn keyboard_shortcut_exp(exp: &str) -> Text {
+fn keyboard_shortcut_exp(exp: &str) -> Text<'_> {
     text(exp).height(CELL_HEIGHT).align_y(Alignment::Center)
 }

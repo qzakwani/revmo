@@ -8,29 +8,30 @@ mod store;
 mod styles;
 mod theme;
 
-// use std::time::Instant;
-use std::{env, vec};
+use std::sync::LazyLock;
+use std::time::Duration;
+use std::{env, thread, vec};
 
 use iced::keyboard::key::{Key, Named};
-use iced::widget::text_input::focus;
-use iced::widget::{column, container, focus_next, focus_previous, row, text, text_input, Space};
+use iced::widget::operation::{focus, focus_next, focus_previous};
+use iced::widget::{Space, column, container, row, text, text_input};
 use iced::window::settings::PlatformSpecific;
-use iced::{event, keyboard, window, Alignment, Event, Padding, Settings};
+use iced::{Alignment, Event, Padding, Settings, event, keyboard, widget, window};
 use iced::{Element, Subscription, Task};
 use iced::{Fill, Theme};
-use once_cell::sync::Lazy;
 use parser::App;
+use revmo::xdg::exec::FieldCode;
+use revmo::{instance, search, usage, xdg};
 use styles::Icons;
 
-static mut APPS: Vec<App> = Vec::new();
-static HOME_DIR: Lazy<String> = Lazy::new(|| {
+static HOME_DIR: LazyLock<String> = LazyLock::new(|| {
     env::var_os("HOME")
         .expect("os $HOME not found")
         .to_string_lossy()
         .to_string()
 });
-static INPUT: Lazy<text_input::Id> = Lazy::new(|| text_input::Id::new("input"));
-static CONTAINER: Lazy<container::Id> = Lazy::new(|| container::Id::new("main"));
+static INPUT: LazyLock<widget::Id> = LazyLock::new(|| widget::Id::new("input"));
+static CONTAINER: LazyLock<widget::Id> = LazyLock::new(|| widget::Id::new("main"));
 const DEFAULT_APP_ICON: char = '\u{f40e}';
 const APP_HEIGHT: f32 = 60.0;
 const APP_PADDING: f32 = 4.0;
@@ -41,9 +42,37 @@ const BODY_HEIGHT: f32 = BATCH_SIZE as f32 * APP_HEIGHT;
 const FOOTER_HEIGHT: f32 = 40.0;
 const WINDOW_HEIGHT: f32 = HEADER_HEIGHT + BODY_HEIGHT + FOOTER_HEIGHT;
 
+static USAGE_FILE: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
+    xdg::base_dirs::state_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo/usage")
+});
+
+// How much launch history counts against match quality; a full-word match
+// is worth roughly 100.
+const FRECENCY_WEIGHT: f64 = 10.0;
+
+// Actions ("New Window", ...) rank a little below their app on similar matches.
+const ACTION_WEIGHT: f64 = 0.9;
+
+const TOAST_DURATION: Duration = Duration::from_secs(5);
+
 const LAUNCH_ICON: &[u8] = include_bytes!("../assets/launch.svg");
 
+/// The listening socket of this (primary) instance, handed to the
+/// subscription that watches it.
+static INSTANCE_SOCKET: std::sync::Mutex<Option<std::os::unix::net::UnixListener>> =
+    std::sync::Mutex::new(None);
+
 fn main() -> iced::Result {
+    let cache_dir =
+        xdg::base_dirs::cache_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo");
+    match instance::acquire(&instance::socket_path(&cache_dir)) {
+        Some(instance::Instance::Secondary) => return Ok(()),
+        Some(instance::Instance::Primary(listener)) => {
+            *INSTANCE_SOCKET.lock().unwrap() = Some(listener);
+        }
+        None => {}
+    }
+
     let settings = window::settings::Settings {
         size: iced::Size::new(1000.0, WINDOW_HEIGHT),
         position: window::Position::Centered,
@@ -61,8 +90,10 @@ fn main() -> iced::Result {
             ..PlatformSpecific::default()
         },
         exit_on_close_request: true,
+        ..window::Settings::default()
     };
-    iced::application("REVMO", Revmo::update, Revmo::view)
+    iced::application(Revmo::new, Revmo::update, Revmo::view)
+        .title("REVMO")
         .settings(Settings {
             id: Some(String::from("revmo")),
             ..Settings::default()
@@ -74,7 +105,7 @@ fn main() -> iced::Result {
         .font(include_bytes!("../fonts/JetBrainsMonoNerdFont-Bold.ttf").as_slice())
         .default_font(styles::FONT_LIGHT)
         .subscription(Revmo::subscription)
-        .run_with(Revmo::new)
+        .run()
 }
 
 struct Revmo {
@@ -83,14 +114,23 @@ struct Revmo {
     selected: usize,
     theme: iced::Theme,
     batch_size: usize,
+    /// Every app not hidden by the user, most relevant first.
     apps: Vec<App>,
+    /// Search data for each of `apps`.
+    haystacks: Vec<search::Haystack>,
+    /// Indices into `apps` matching the search, in display order.
+    visible: Vec<usize>,
     toast: Option<(String, ToastLevel)>,
+    /// Incremented per toast, so a timer only clears the toast it was started for.
+    toast_id: u64,
     help: bool,
     is_args: bool,
-    app_args: Vec<String>,
+    app_args: Vec<FieldCode>,
     exec_args: Vec<String>,
-    store: bool,
+    usage: usage::Usage,
     is_loading: bool,
+    /// Set once the window has had focus; losing it after that closes revmo.
+    was_focused: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -109,46 +149,122 @@ enum Message {
     ViewArgs,
     HideArgs,
     ArgsChange(usize, String),
-    RunWithArgs(usize, String, Vec<String>),
-    RunPress(usize, String),
+    /// Apps are named by key: ids would change if a rescan lands in between.
+    RunWithArgs(String, Vec<String>),
+    RunPress(String),
     RemoveApp,
     RunFailed,
     Refresh,
     Exit,
     HelpPage,
-    ToastDone(()),
+    ToastDone(u64),
     Junk(()),
     ForwardTheme,
     BackwardTheme,
-    // Resized(iced::Size),
+    WindowFocused,
+    WindowUnfocused,
 }
 
 impl Revmo {
+    /// Opens with the cached apps right away, then checks in the background
+    /// whether they're stale; if so the list updates once the scan is done.
     fn new() -> (Self, Task<Message>) {
+        let mut revmo = Revmo::_new();
+        let Some((fingerprint, apps)) = App::cached() else {
+            // First run or unreadable cache: show "Loading" until scanned.
+            return (revmo, scan_if_changed(None));
+        };
+        let shown = revmo.update(Message::AppsLoaded(apps));
         (
-            Revmo::_new(),
-            Task::perform(App::get(), Message::AppsLoaded),
+            revmo,
+            Task::batch([shown, scan_if_changed(Some(fingerprint))]),
         )
     }
 
     fn _new() -> Self {
-        let c = config::Config::load();
-        let theme_id = c.theme_id;
+        let config = config::Config::load();
+        let theme = theme::by_name(&config.theme).clone();
         Self {
-            config: c,
+            config,
             search: String::new(),
             selected: 0,
-            theme: theme::get_theme(theme_id).to_owned(),
+            theme,
             batch_size: BATCH_SIZE,
             apps: vec![],
+            haystacks: vec![],
+            visible: vec![],
             toast: None,
+            toast_id: 0,
             help: false,
             is_args: false,
             app_args: Vec::new(),
             exec_args: Vec::new(),
-            store: false,
+            usage: usage::Usage::load(&USAGE_FILE),
             is_loading: true,
+            was_focused: false,
         }
+    }
+
+    /// Launches the app with the given key and closes revmo on success.
+    fn run(&mut self, key: &str, inputs: &[String]) -> Task<Message> {
+        let Some(app) = self.apps.iter().find(|a| a.key == key) else {
+            return Task::done(Message::RunFailed);
+        };
+        if let Err(err) = app.launch(inputs) {
+            eprintln!("Error: failed to launch {}: {err}", app.name);
+            return Task::done(Message::RunFailed);
+        }
+        let key = app.key.clone();
+        self.usage.record(&key, usage::now());
+        if let Err(e) = self.usage.save(&USAGE_FILE) {
+            eprintln!("Failed to save {}: {e}", USAGE_FILE.display());
+        }
+        Task::done(Message::Exit)
+    }
+
+    /// Shows a toast and starts the timer that hides it.
+    fn notify(&mut self, msg: String, level: ToastLevel) -> Task<Message> {
+        self.toast_id += 1;
+        self.toast = Some((msg, level));
+        let id = self.toast_id;
+        Task::perform(
+            helpers::on_thread(|| thread::sleep(TOAST_DURATION)),
+            move |_| Message::ToastDone(id),
+        )
+    }
+
+    fn set_theme(&mut self, theme: Theme) {
+        self.config.theme = theme.to_string();
+        self.config.save();
+        self.theme = theme;
+    }
+
+    fn selected_app(&self) -> Option<&App> {
+        self.visible.get(self.selected).map(|&i| &self.apps[i])
+    }
+
+    /// Recomputes the visible apps from the search text: best matches
+    /// first, with frequently used apps winning close calls.
+    fn filter(&mut self) {
+        let now = usage::now();
+        let mut scored: Vec<(f64, usize)> = self
+            .haystacks
+            .iter()
+            .enumerate()
+            .filter_map(|(i, h)| {
+                let app = &self.apps[i];
+                let mut score = h.score(&self.search)?;
+                if app.action.is_some() {
+                    score *= ACTION_WEIGHT;
+                }
+                let usage = self.usage.score(&app.key, now);
+                Some((score + FRECENCY_WEIGHT * usage.ln_1p(), i))
+            })
+            .collect();
+        // Stable, so ties keep the frecency order of `apps`.
+        scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+        self.visible = scored.into_iter().map(|(_, i)| i).collect();
+        self.selected = 0;
     }
 
     fn theme(&self) -> iced::Theme {
@@ -157,54 +273,56 @@ impl Revmo {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::AppsLoaded(apps) => {
-                unsafe {
-                    APPS = apps.clone();
-                    self.apps = apps;
-                    self.is_loading = false;
+            Message::AppsLoaded(mut apps) => {
+                // This can arrive while the list is in use (a background
+                // rescan), so keep the selection and the arguments page.
+                let selected = self.selected_app().map(|a| (a.key.clone(), a.arg_codes()));
+                let was_loading = self.is_loading;
+                apps.retain(|a| !self.config.hidden.contains(&a.key));
+                // Stable sort: apps never launched stay alphabetical.
+                let now = usage::now();
+                apps.sort_by(|a, b| {
+                    let score = |app: &App| self.usage.score(&app.key, now);
+                    score(b).total_cmp(&score(a))
+                });
+                self.haystacks = apps.iter().map(App::haystack).collect();
+                self.apps = apps;
+                self.is_loading = false;
+                self.filter();
+                if let Some((key, codes)) = selected {
+                    let pos = self.visible.iter().position(|&i| self.apps[i].key == key);
+                    if let Some(pos) = pos {
+                        self.selected = pos;
+                    }
+                    // Its inputs only make sense for the same app and arguments.
+                    let same =
+                        pos.is_some() && self.selected_app().map(App::arg_codes) == Some(codes);
+                    if self.is_args && !same {
+                        return self.update(Message::HideArgs);
+                    }
                 }
-                focus(INPUT.clone()).map(Message::Junk)
+                if was_loading {
+                    focus(INPUT.clone()).map(Message::Junk)
+                } else {
+                    Task::none()
+                }
             }
             Message::SearchChanged(input) => {
                 self.search = input;
-                self.selected = 0;
-
-                unsafe {
-                    if self.search.is_empty() {
-                        self.apps = APPS.clone();
-                        return Task::none();
-                    }
-                    self.apps = APPS
-                        .iter()
-                        .filter(|app| {
-                            app.name
-                                .to_lowercase()
-                                .contains(&self.search.to_lowercase())
-                        })
-                        .cloned()
-                        .collect();
-                }
+                self.filter();
                 Task::none()
             }
 
-            Message::RunIndex => {
-                if let Some(app) = self.apps.get(self.selected).cloned() {
-                    helpers::set_app_history(self, app.id);
-                    return Task::done(run(app.exec, None));
-                }
-                Task::done(Message::RunFailed)
-            }
+            Message::RunIndex => match self.selected_app() {
+                Some(app) => self.run(&app.key.clone(), &[]),
+                None => Task::done(Message::RunFailed),
+            },
 
             Message::SelectDown => {
                 if self.is_args {
                     return focus_next();
                 }
-                let l = if self.apps.len() > 0 {
-                    self.apps.len() - 1
-                } else {
-                    0
-                };
-                if self.selected < l {
+                if self.selected + 1 < self.visible.len() {
                     self.selected += 1;
                 }
                 Task::none()
@@ -220,7 +338,10 @@ impl Revmo {
             }
 
             Message::ArgsChange(i, arg) => {
-                self.exec_args[i] = arg;
+                // A rescan may have closed the page since this was typed.
+                if let Some(input) = self.exec_args.get_mut(i) {
+                    *input = arg;
+                }
                 Task::none()
             }
 
@@ -228,19 +349,9 @@ impl Revmo {
                 if self.is_args {
                     return Task::none();
                 }
-                self.is_args = if self.apps[self.selected].args.is_some() {
-                    self.app_args = self.apps[self.selected]
-                        .args
-                        .clone()
-                        .unwrap()
-                        .split(',')
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>();
-                    self.exec_args = vec!["".to_string(); self.app_args.len()];
-                    true
-                } else {
-                    false
-                };
+                self.app_args = self.selected_app().map(App::arg_codes).unwrap_or_default();
+                self.exec_args = vec![String::new(); self.app_args.len()];
+                self.is_args = !self.app_args.is_empty();
                 focus("0")
             }
 
@@ -251,116 +362,82 @@ impl Revmo {
                 focus(INPUT.clone())
             }
 
-            Message::RunWithArgs(id, exec, args) => {
-                helpers::set_app_history(self, id);
-                Task::done(run(exec, Some(args)))
-            }
+            Message::RunWithArgs(key, args) => self.run(&key, &args),
 
-            Message::RunPress(id, exec) => {
-                helpers::set_app_history(self, id);
-                Task::done(run(exec, None))
-            }
+            Message::RunPress(key) => self.run(&key, &[]),
 
             Message::RemoveApp => {
-                if let Some(app) = self.apps.get(self.selected).cloned() {
-                    self.toast = helpers::remove_app(self, app.id);
-                    if self.toast.as_ref().unwrap().1 == ToastLevel::Success {
-                        unsafe {
-                            self.selected = 0;
-                            self.search = String::new();
-                            self.apps = APPS.clone();
-                        }
-                    }
+                if let Some(&index) = self.visible.get(self.selected) {
+                    let removed = self.apps.remove(index);
+                    self.haystacks.remove(index);
+                    self.config.hidden.push(removed.key.clone());
+                    self.config.save();
+                    self.search.clear();
+                    self.filter();
+                    return self.notify(format!("{} removed!", removed.name), ToastLevel::Success);
                 }
-                Task::perform(helpers::toast_task(), Message::ToastDone)
+                Task::none()
             }
             Message::HelpPage => {
                 self.help = !self.help;
                 Task::none()
             }
 
-            Message::ToastDone(_) => {
-                self.toast = None;
+            Message::ToastDone(id) => {
+                if id == self.toast_id {
+                    self.toast = None;
+                }
                 Task::none()
             }
 
-            Message::Exit => {
-                if self.store {
-                    unsafe {
-                        store::store_apps(APPS.as_slice());
-                    };
-                }
-                window::get_latest().and_then(window::close)
+            Message::Exit => window::latest().and_then(window::close),
+
+            Message::WindowFocused => {
+                self.was_focused = true;
+                Task::none()
             }
+            // Like other launchers: clicking elsewhere dismisses revmo. Some
+            // window managers never focus the window, so only close after it
+            // actually had focus.
+            Message::WindowUnfocused if self.was_focused => Task::done(Message::Exit),
+            Message::WindowUnfocused => Task::none(),
 
             Message::Junk(_) => Task::none(),
-            Message::RunFailed => {
-                self.toast = Some(("Failed to launch app!".to_string(), ToastLevel::Error));
-                Task::perform(helpers::toast_task(), Message::ToastDone)
-            }
+            Message::RunFailed => self.notify("Failed to launch app!".into(), ToastLevel::Error),
 
             Message::Refresh => {
-                let res = helpers::refresh_app();
-                if res.is_none() {
-                    self.toast = Some(("Failed to refresh app!".to_string(), ToastLevel::Error));
-                    return Task::perform(helpers::toast_task(), Message::ToastDone);
-                }
-                *self = Revmo::_new();
-                self.toast = Some(("Revmo is refreshed.".to_string(), ToastLevel::Success));
-
-                Task::perform(App::get(), Message::AppsLoaded)
-                    .chain(Task::perform(helpers::toast_task(), Message::ToastDone))
+                // Rescan only: history, removed apps and the theme stay.
+                self.search.clear();
+                self.visible.clear();
+                self.selected = 0;
+                self.is_args = false;
+                self.app_args.clear();
+                self.exec_args.clear();
+                self.is_loading = true;
+                let toast = self.notify("Apps rescanned.".into(), ToastLevel::Success);
+                Task::batch([rescan(), toast])
             }
 
             Message::ForwardTheme => {
-                let (theme, i) = theme::forward_theme(self.config.theme_id);
-                self.theme = theme.to_owned();
-                self.config.theme_id = i;
-                self.config.save();
+                self.set_theme(theme::next(&self.theme).clone());
                 Task::none()
             }
 
             Message::BackwardTheme => {
-                let (theme, i) = theme::backward_theme(self.config.theme_id);
-                self.theme = theme.to_owned();
-                self.config.theme_id = i;
-                self.config.save();
+                self.set_theme(theme::previous(&self.theme).clone());
                 Task::none()
-            } // Message::Resized(size) => {
-              // self.batch_size = helpers::batch_size(size.height, APP_HEIGHT);
-              // Task::none()
-              // }
+            }
         }
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        event::listen_with(|e, _, _| match e {
-            Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => match key {
-                Key::Named(Named::ArrowDown) => Some(Message::SelectDown),
-                Key::Named(Named::ArrowUp) => Some(Message::SelectUp),
-                Key::Named(Named::Escape) => Some(Message::Exit),
-                Key::Named(Named::ArrowRight) if modifiers.command() => Some(Message::ForwardTheme),
-                Key::Named(Named::ArrowRight) => Some(Message::ViewArgs),
-                Key::Named(Named::ArrowLeft) if modifiers.command() => Some(Message::BackwardTheme),
-                Key::Named(Named::ArrowLeft) => Some(Message::HideArgs),
-                Key::Named(Named::Tab) => Some(Message::SelectDown),
-                Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("h") => {
-                    Some(Message::HelpPage)
-                }
-                Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("d") => {
-                    Some(Message::RemoveApp)
-                }
-                Key::Character(c) if modifiers.command() && *c == *smol_str::SmolStr::new("r") => {
-                    Some(Message::Refresh)
-                }
-                _ => None,
-            },
-            // Event::Window(window::Event::Resized(s)) => Some(Message::Resized(s)),
-            _ => None,
-        })
+        Subscription::batch([
+            Subscription::run(other_instances),
+            event::listen_with(handle_event),
+        ])
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         if self.is_loading {
             return container(text("Loading apps...").size(30))
                 .height(Fill)
@@ -372,8 +449,10 @@ impl Revmo {
             return help_page::view(self);
         }
 
-        if self.is_args {
-            return args_page::view(self, &self.apps[self.selected]);
+        if self.is_args
+            && let Some(app) = self.selected_app()
+        {
+            return args_page::view(self, app);
         }
 
         let input = text_input("", &self.search)
@@ -392,16 +471,16 @@ impl Revmo {
             .align_y(Alignment::Center)
             .spacing(20),
         )
-        .style(|t| styles::header_style(t))
+        .style(styles::header_style)
         .align_y(Alignment::Center)
         .padding([0, 20]);
 
         let (active_batch, total_batches, selected, apps) =
-            batch::get_batch(&self.apps, self.batch_size, self.selected);
+            batch::get_batch(&self.visible, self.batch_size, self.selected);
         let mut batch: Vec<Element<Message>> = Vec::with_capacity(apps.len());
 
-        for (i, app) in apps.iter().enumerate() {
-            batch.push(helpers::get_app_view(app, i == selected, &self.theme).into());
+        for (i, &index) in apps.iter().enumerate() {
+            batch.push(helpers::get_app_view(&self.apps[index], i == selected, &self.theme).into());
         }
 
         let footer = if let Some((msg, level)) = &self.toast {
@@ -410,14 +489,14 @@ impl Revmo {
             container(
                 row![
                     text(format!("{}/{}", active_batch, total_batches))
-                        .style(|t| styles::PAGE_COUNTER_STYLE.clone()(t))
+                        .style(styles::page_counter_style)
                         .size(18),
-                    Space::with_width(Fill),
+                    Space::new().width(Fill),
                     text("\u{f0634} \u{f0fd} ")
                         .size(24)
-                        .style(|t| styles::PAGE_COUNTER_STYLE.clone()(t))
+                        .style(styles::page_counter_style)
                         .align_y(Alignment::Center),
-                    Space::with_width(Fill),
+                    Space::new().width(Fill),
                     text("\u{f12b7} ")
                         .size(24)
                         .color(self.theme.palette().danger)
@@ -447,23 +526,56 @@ impl Revmo {
     }
 }
 
-fn run(exec: String, args: Option<Vec<String>>) -> Message {
-    let mut binding = std::process::Command::new("sh");
+/// Rescans off the UI thread if the apps changed since `fingerprint`.
+fn scan_if_changed(fingerprint: Option<u64>) -> Task<Message> {
+    Task::perform(
+        helpers::on_thread(move || App::scan_if_changed(fingerprint)),
+        |apps| apps,
+    )
+    .and_then(|apps| Task::done(Message::AppsLoaded(apps)))
+}
 
-    let mut command = exec;
-    if args.is_some() {
-        for arg in args.unwrap() {
-            command.push_str(" ");
-            command.push_str(&arg);
+/// Rescans off the UI thread.
+fn rescan() -> Task<Message> {
+    Task::perform(helpers::on_thread(App::scan), Message::AppsLoaded)
+}
+
+fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
+    match e {
+        Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => match key {
+            Key::Named(Named::ArrowDown) => Some(Message::SelectDown),
+            Key::Named(Named::ArrowUp) => Some(Message::SelectUp),
+            Key::Named(Named::Escape) => Some(Message::Exit),
+            Key::Named(Named::ArrowRight) if modifiers.command() => Some(Message::ForwardTheme),
+            Key::Named(Named::ArrowRight) => Some(Message::ViewArgs),
+            Key::Named(Named::ArrowLeft) if modifiers.command() => Some(Message::BackwardTheme),
+            Key::Named(Named::ArrowLeft) => Some(Message::HideArgs),
+            Key::Named(Named::Tab) => Some(Message::SelectDown),
+            Key::Character(c) if modifiers.command() && c.as_str() == "h" => {
+                Some(Message::HelpPage)
+            }
+            Key::Character(c) if modifiers.command() && c.as_str() == "d" => {
+                Some(Message::RemoveApp)
+            }
+            Key::Character(c) if modifiers.command() && c.as_str() == "r" => Some(Message::Refresh),
+            _ => None,
+        },
+        Event::Window(window::Event::Focused) => Some(Message::WindowFocused),
+        Event::Window(window::Event::Unfocused) => Some(Message::WindowUnfocused),
+        _ => None,
+    }
+}
+
+/// Emits `Exit` whenever another `revmo` starts (see instance.rs).
+fn other_instances() -> impl iced::futures::Stream<Item = Message> {
+    iced::stream::channel(1, async move |output| {
+        if let Some(listener) = INSTANCE_SOCKET.lock().unwrap().take() {
+            thread::spawn(move || {
+                for _ in listener.incoming() {
+                    let _ = output.clone().try_send(Message::Exit);
+                }
+            });
         }
-    }
-
-    binding.arg("-c").arg(command);
-
-    if let Err(err) = binding.spawn() {
-        eprintln!("Error: {:?}", err);
-        return Message::RunFailed;
-    }
-
-    Message::Exit
+        std::future::pending::<()>().await
+    })
 }

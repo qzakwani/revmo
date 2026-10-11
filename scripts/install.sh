@@ -1,86 +1,97 @@
 #!/bin/sh
+# Installs (or updates) revmo for the current user.
+set -eu
 
-# General Variables
 APP_NAME="revmo"
 ICON="revmo.png"
-VERSION="v1.0.0"
-GITHUB_REPO="https://github.com/qzakwani/$APP_NAME/releases/download/$VERSION"
+RELEASE_URL="https://github.com/qzakwani/$APP_NAME/releases/latest/download"
 
-# Directories
-DATA_DIR="$HOME/.local/share/$APP_NAME"
-CONFIG_DIR="$HOME/.config/$APP_NAME"
 BIN_DIR="$HOME/.local/bin"
-ICON_DIR="$HOME/.local/share/icons"
-DESKTOP_FILE_DIR="$HOME/.local/share/applications"
+ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons"
+DESKTOP_FILE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
+red() { printf '\033[1;31m%s\033[0m\n' "$*"; }
+yellow() { printf '\033[1;33m%s\033[0m\n' "$*"; }
+green() { printf '\033[1;32m%s\033[0m\n' "$*"; }
 
 echo "Checking environment..."
 
-
-# Check if the system is x86_64 Linux
-ARCH=$(uname -m)
-OS=$(uname -s)
-
-if [ "$ARCH" != "x86_64" ] || [ "$OS" != "Linux" ]; then
-    echo "This app supports only x86_64 Linux systems."
+if [ "$(uname -m)" != "x86_64" ] || [ "$(uname -s)" != "Linux" ]; then
+    red "This app supports only x86_64 Linux systems."
     exit 1
 fi
 
-# Check if the environment supports .desktop files
-if [ -z "$XDG_CURRENT_DESKTOP" ]; then
-    echo "Your environment is not supported."
+if [ -z "${XDG_CURRENT_DESKTOP:-}" ]; then
+    red "No desktop environment detected (\$XDG_CURRENT_DESKTOP is not set)."
     exit 1
 fi
 
-# Create necessary directories
-mkdir -p "$DATA_DIR" "$CONFIG_DIR" "$BIN_DIR" "$ICON_DIR" "$DESKTOP_FILE_DIR"
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
 
-# Download the app binary from GitHub releases
+download() {
+    # -f: fail on HTTP errors instead of saving the error page.
+    curl -fL --progress-bar "$RELEASE_URL/$1" -o "$TMP_DIR/$1"
+}
+
 echo "Downloading the latest release..."
-if ! curl -L --progress-bar "$GITHUB_REPO/$APP_NAME" -o "$BIN_DIR/$APP_NAME"; then
-    echo -e "\033[1;31m❌ Failed to download revmo. Please check your internet connection and try again.\033[0m"
+if ! download "$APP_NAME" || ! download "$ICON"; then
+    red "Failed to download revmo. Please check your internet connection and try again."
     exit 1
 fi
-if ! curl -L --progress-bar "$GITHUB_REPO/$ICON" -o "$ICON_DIR/$ICON"; then
-    echo -e "\033[1;31m❌ Failed to download revmo. Please check your internet connection and try again.\033[0m"
-    exit 1
+
+if download SHA256SUMS 2>/dev/null; then
+    if command -v sha256sum >/dev/null 2>&1; then
+        if ! (cd "$TMP_DIR" && sha256sum -c --quiet SHA256SUMS); then
+            red "Checksum verification failed; not installing."
+            exit 1
+        fi
+    else
+        yellow "sha256sum not found; skipping checksum verification."
+    fi
+else
+    yellow "This release has no checksums; skipping verification."
 fi
 
 echo "Installing revmo..."
+mkdir -p "$BIN_DIR" "$ICON_DIR" "$DESKTOP_FILE_DIR"
+chmod +x "$TMP_DIR/$APP_NAME"
+# Move into place only after a complete download, so a failed update
+# never leaves a broken binary behind.
+mv "$TMP_DIR/$APP_NAME" "$BIN_DIR/$APP_NAME"
+mv "$TMP_DIR/$ICON" "$ICON_DIR/$ICON"
 
-# Make the binary executable
-chmod +x "$BIN_DIR/$APP_NAME"
-
-# Create the desktop file
 cat <<EOF > "$DESKTOP_FILE_DIR/$APP_NAME.desktop"
 [Desktop Entry]
+Type=Application
+Version=1.5
 Name=Revmo
-Version=1.0.0
+Comment=Keyboard-driven app launcher
 Exec=$BIN_DIR/$APP_NAME
 Icon=$ICON_DIR/$ICON
 Terminal=false
-Type=Application
 StartupNotify=true
 StartupWMClass=revmo
 Categories=Utility;
 EOF
 
-# Check if the bin directory is in PATH
-if ! echo "$PATH" | grep -q "$BIN_DIR"; then
-    echo ""
-    echo -e "\033[1;33m⚠️  WARNING:\033[0m The directory \033[1;34m$BIN_DIR\033[0m is not in your PATH."
-    echo -e "To temporarily add it to your PATH for the current session, run:"
-    echo -e "\033[1;32mexport PATH=\$PATH:$BIN_DIR\033[0m"
-    echo -e "To make this change permanent, add the following line to your shell configuration file (e.g., \033[1;36m~/.bashrc\033[0m or \033[1;36m~/.zshrc\033[0m):"
-    echo -e "\033[1;32mexport PATH=\$PATH:$BIN_DIR\033[0m"
-    echo ""
-fi
+case ":$PATH:" in
+    *":$BIN_DIR:"*) ;;
+    *)
+        echo ""
+        yellow "WARNING: $BIN_DIR is not in your PATH."
+        echo "To add it for the current session, run:"
+        green "export PATH=\$PATH:$BIN_DIR"
+        echo "To make it permanent, add that line to your shell configuration file (e.g. ~/.bashrc or ~/.zshrc)."
+        echo ""
+        ;;
+esac
 
-# Success message
 echo ""
-echo -e "\033[1;32m🎉 Congratulations!\033[0m The app has been installed successfully!"
+green "Revmo has been installed successfully!"
 echo ""
-echo -e "You can now use \033[1;34m$APP_NAME\033[0m in the following ways:"
-echo -e "1. Run the app from the CLI using: \033[1;32m$APP_NAME\033[0m"
-echo -e "2. Use the desktop application from your system's application menu."
+echo "You can now:"
+echo "1. Run it from a terminal with: $APP_NAME"
+echo "2. Open it from your application menu."
+echo "Tip: bind '$BIN_DIR/$APP_NAME' to a keyboard shortcut; pressing it again closes revmo."
 echo ""

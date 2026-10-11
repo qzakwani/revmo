@@ -14,7 +14,8 @@ _**Because clicking is overrated, and efficiency is everything.**_
 ### 🧩 **Key Features**
 
 - 🎯 **No Mouse Needed**: Navigate and launch apps effortlessly with just your keyboard.
-- 🕒 **Launch History**: Quickly revisit your most frequently or recently launched apps.
+- 🔎 **Fuzzy Search**: Type a few letters (`lw` → LibreOffice Writer); app descriptions and keywords are searched too.
+- 🕒 **Launch History**: Your most frequently and recently launched apps come first.
 - ⚡ **Blazingly Fast**: Powered by Rust for unparalleled performance.
 - 📦 **Self-Contained**: Fully standalone with zero dependencies—just download and go.
 - 🎨 **Vibrant Themes**: A range of sleek themes to suit your style.
@@ -65,7 +66,7 @@ Once installed, you can easily launch **Revmo** in two ways:
 To make the most out of **Revmo**, consider these tips:
 
 - **Bind Revmo to a Keyboard Shortcut**  
-  Launch **Revmo** instantly by binding it to a keyboard shortcut! Most desktop environments allow you to assign custom shortcuts to applications. Simply bind the `revmo` command to your favorite key combination, like `Alt + Space` or `Super + J`, for seamless access.
+  Launch **Revmo** instantly by binding it to a keyboard shortcut! Most desktop environments allow you to assign custom shortcuts to applications. Simply bind the `revmo` command to your favorite key combination, like `Alt + Space` or `Super + J`, for seamless access. Pressing the shortcut again (or clicking outside the window) closes Revmo.
 
 - **Use Themes to Match Your Style**  
   Customize **Revmo** to blend with your desktop setup by selecting a theme that complements your workflow.
@@ -78,8 +79,30 @@ To make the most out of **Revmo**, consider these tips:
 - **Take Advantage of App History**  
   Revmo keeps a history of your launched apps, so you can quickly re-open frequently used applications without retyping.
 
+- **Open Files and Links Directly**  
+  Apps that accept files or URLs show `→ %f`/`%U` under their name. Press `→` to type the files to open with them; wrap names containing spaces in quotes when giving several.
+
 - **Clean Up Your App List**  
-  Found unwanted apps in your launcher? Remove them from the list to keep your search results clean and focused.
+  Found unwanted apps in your launcher? Press `Ctrl + D` to remove one from the list. To bring it back, delete it from the `Hidden=` line in the config file (see below).
+
+- **Keyboard Shortcuts**
+
+  | Key | Action |
+  |---|---|
+  | Type | Search |
+  | `↑` / `↓` / `Tab` | Move the selection |
+  | `Enter` | Launch the selected app |
+  | `→` / `←` | Open / close the arguments page |
+  | `Ctrl + →` / `Ctrl + ←` | Next / previous theme |
+  | `Ctrl + D` | Remove the selected app from the list |
+  | `Ctrl + R` | Rescan installed apps (history, removed apps and theme are kept) |
+  | `Ctrl + H` | Help |
+  | `Esc` | Close |
+
+- **Where Revmo Keeps Its Files**
+  - `~/.config/revmo/config`: theme and removed apps (plain text, safe to edit)
+  - `~/.local/state/revmo/usage`: launch history
+  - `~/.cache/revmo/apps`: cached app list, rebuilt automatically when apps are installed or removed
 
 With these simple tweaks, you can elevate your productivity and enjoy the full power of **Revmo**! 🚀
 
@@ -101,6 +124,13 @@ Here are some common issues you might encounter and how to fix them:
 
   - **Cause**: The `revmo` command might not be in your system's PATH.
   - **Solution**: If you used the installation method above, add `revmo` to your PATH, or the whole dir: `$HOME/.local/bin` (should be there by default!)
+
+- **A Newly Installed App or Icon Theme Doesn't Show Up**
+  - **Solution**: New and removed apps are picked up automatically on the next start. After changing your icon theme, press `Ctrl + R` to rescan.
+
+- **Terminal Apps (e.g. Vim, htop) Don't Open**
+  - **Cause**: Revmo opens them in a terminal emulator and didn't find one.
+  - **Solution**: Set the `TERMINAL` environment variable to your terminal (e.g. `export TERMINAL=kitty`), or install one of kitty, foot, alacritty, wezterm, ghostty, gnome-terminal, konsole, xfce4-terminal, tilix or xterm.
 
 - **Shortcut Key Doesn’t Work**
   - **Cause**: Desktop environment settings may not have applied the custom shortcut or the command is not found.

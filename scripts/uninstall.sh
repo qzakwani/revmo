@@ -1,73 +1,49 @@
 #!/bin/sh
+# Removes revmo and everything it stored for the current user.
 
-# General Variables
 APP_NAME="revmo"
 ICON="revmo.png"
-VERSION="v1.0.0"
 
-# Colors
-RED='\033[0;31m'
-YELLOW='\033[0;33m'
-NC='\033[0m' 
-
-# Directories
-DATA_DIR="$HOME/.local/share/$APP_NAME"
-CONFIG_DIR="$HOME/.config/$APP_NAME"
 BIN_DIR="$HOME/.local/bin"
-ICON_DIR="$HOME/.local/share/icons"
-DESKTOP_FILE_DIR="$HOME/.local/share/applications"
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+ICON_DIR="$DATA_HOME/icons"
+DESKTOP_FILE_DIR="$DATA_HOME/applications"
 
-# Function to remove the binary
-remove_binary() {
-    if [ -f "$BIN_DIR/$APP_NAME" ]; then
-        rm "$BIN_DIR/$APP_NAME"
-    else
-        echo -e "${RED}Error: $BIN_DIR/$APP_NAME not found.${NC}"
-        exit 1
-    fi
-}
+# Settings, launch history and cache.
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$APP_NAME"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/$APP_NAME"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/$APP_NAME"
+# Only used by versions before 1.1.
+LEGACY_DATA_DIR="$DATA_HOME/$APP_NAME"
 
-# Function to remove the icon
-remove_icon() {
-    if [ -f "$ICON_DIR/$ICON" ]; then
-        rm "$ICON_DIR/$ICON"
-    else
-        echo -e "${YELLOW}Warning: $ICON_DIR/$ICON not found.${NC}"
-    fi
-}
+red() { printf '\033[0;31m%s\033[0m\n' "$*"; }
+yellow() { printf '\033[0;33m%s\033[0m\n' "$*"; }
 
-# Function to remove the desktop file
-remove_desktop_file() {
-    if [ -f "$DESKTOP_FILE_DIR/$APP_NAME.desktop" ]; then
-        rm "$DESKTOP_FILE_DIR/$APP_NAME.desktop"
+remove_file() {
+    if [ -f "$1" ]; then
+        rm "$1"
     else
-        echo -e "${YELLOW}Warning: $DESKTOP_FILE_DIR/$APP_NAME.desktop not found.${NC}"
-    fi
-}
-
-# Function to remove application data and configuration
-remove_app_data() {
-    if [ -d "$DATA_DIR" ] || [ -d "$CONFIG_DIR" ]; then
-        echo "Removing data..."
-        rm -rf "$DATA_DIR"
-        rm -rf "$CONFIG_DIR"
-    else
-        echo -e "${YELLOW}Warning: No data or configuration directories found.${NC}"
+        yellow "Warning: $1 not found."
     fi
 }
 
 echo "Uninstalling revmo..."
-remove_binary
-remove_icon
-remove_desktop_file
-remove_app_data
+
+if [ ! -f "$BIN_DIR/$APP_NAME" ]; then
+    red "Error: $BIN_DIR/$APP_NAME not found."
+    exit 1
+fi
+rm "$BIN_DIR/$APP_NAME"
+remove_file "$ICON_DIR/$ICON"
+remove_file "$DESKTOP_FILE_DIR/$APP_NAME.desktop"
+
+echo "Removing settings, history and cache..."
+rm -rf "$CONFIG_DIR" "$STATE_DIR" "$CACHE_DIR" "$LEGACY_DATA_DIR"
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    rm -f "$XDG_RUNTIME_DIR/$APP_NAME.sock"
+fi
 
 echo "Uninstallation complete."
 echo ""
-echo -e "${YELLOW}If you decide to reinstall, you can visit the GitHub page: https://github.com/qzakwani/revmo${NC}"
+yellow "If you decide to reinstall, visit https://github.com/qzakwani/revmo"
 echo ""
-
-
-
-
-

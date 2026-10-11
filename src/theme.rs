@@ -1,7 +1,7 @@
 use iced::Theme;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
-pub static THEMES: Lazy<[Theme; 44]> = Lazy::new(|| {
+pub static THEMES: LazyLock<[Theme; 44]> = LazyLock::new(|| {
     [
         Theme::Light,
         Theme::custom("Nude Light".to_string(), Theme::Light.palette()),
@@ -89,22 +89,48 @@ pub static THEMES: Lazy<[Theme; 44]> = Lazy::new(|| {
     ]
 });
 
-static THEMES_LEN: Lazy<usize> = Lazy::new(|| THEMES.len());
-
-pub fn get_theme(i: usize) -> &'static Theme {
-    &THEMES[i]
+pub fn default_theme() -> &'static Theme {
+    &THEMES[0]
 }
 
-pub fn forward_theme(i: usize) -> (&'static Theme, usize) {
-    if i == THEMES_LEN.clone() - 1 {
-        return (&THEMES[0], 0);
-    }
-    (&THEMES[i + 1], i + 1)
+/// The theme with the given name, or the default one.
+pub fn by_name(name: &str) -> &'static Theme {
+    THEMES
+        .iter()
+        .find(|t| t.to_string() == name)
+        .unwrap_or_else(default_theme)
 }
 
-pub fn backward_theme(i: usize) -> (&'static Theme, usize) {
-    if i == 0 {
-        return (&THEMES[THEMES_LEN.clone() - 1], THEMES_LEN.clone() - 1);
+fn position(current: &Theme) -> usize {
+    let name = current.to_string();
+    THEMES
+        .iter()
+        .position(|t| t.to_string() == name)
+        .unwrap_or(0)
+}
+
+pub fn next(current: &Theme) -> &'static Theme {
+    &THEMES[(position(current) + 1) % THEMES.len()]
+}
+
+pub fn previous(current: &Theme) -> &'static Theme {
+    &THEMES[(position(current) + THEMES.len() - 1) % THEMES.len()]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cycles_by_name() {
+        let first = default_theme();
+        let last = &THEMES[THEMES.len() - 1];
+        assert_eq!(next(last).to_string(), first.to_string());
+        assert_eq!(previous(first).to_string(), last.to_string());
+        assert_eq!(
+            by_name(&THEMES[3].to_string()).to_string(),
+            THEMES[3].to_string()
+        );
+        assert_eq!(by_name("No Such Theme").to_string(), first.to_string());
     }
-    (&THEMES[i - 1], i - 1)
 }
