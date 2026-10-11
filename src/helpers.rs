@@ -2,13 +2,13 @@ use std::thread;
 
 use iced::futures::channel::oneshot;
 use iced::{
-    widget::{button, column, container, image, row, svg, text, Column, Container, Space},
     Alignment, Color, Element,
     Length::Fill,
     Theme,
+    widget::{Column, Container, Space, button, column, container, image, row, svg, text},
 };
 
-use crate::{parser::App, styles, Message, ToastLevel, APP_HEIGHT, APP_PADDING, DEFAULT_APP_ICON};
+use crate::{APP_HEIGHT, APP_PADDING, DEFAULT_APP_ICON, Message, ToastLevel, parser::App, styles};
 
 /// Runs blocking work on its own thread. iced's default executor is a small
 /// thread pool, so sleeping or doing file IO inside a future would stall it.
@@ -51,11 +51,11 @@ pub fn get_app_view<'a>(app: &'a App, selected: bool, theme: &'a Theme) -> Conta
     if selected {
         container(
             row![
-                Space::with_width(6),
+                Space::new().width(6),
                 icon,
-                Space::with_width(6),
+                Space::new().width(6),
                 button(get_inner_button(app, theme, true))
-                    .on_press(Message::RunPress(app.id))
+                    .on_press(Message::RunPress(app.key.clone()))
                     .style(|_, _| *styles::UNSELECTED_STYLE)
                     .width(Fill)
             ]
@@ -68,11 +68,11 @@ pub fn get_app_view<'a>(app: &'a App, selected: bool, theme: &'a Theme) -> Conta
     } else {
         container(
             row![
-                Space::with_width(6),
+                Space::new().width(6),
                 icon,
-                Space::with_width(6),
+                Space::new().width(6),
                 button(get_inner_button(app, theme, false))
-                    .on_press(Message::RunPress(app.id))
+                    .on_press(Message::RunPress(app.key.clone()))
                     .width(Fill)
                     .style(|_, _| *styles::UNSELECTED_STYLE)
             ]

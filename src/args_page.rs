@@ -1,9 +1,9 @@
-use iced::widget::{button, column, container, row, svg, text, text_input, Space};
 use iced::Length::Fill;
-use iced::{border, padding, Alignment, Element};
+use iced::widget::{Space, button, column, container, row, svg, text, text_input};
+use iced::{Alignment, Element, border, padding};
 
-use crate::{helpers, styles, Revmo, FOOTER_HEIGHT, LAUNCH_ICON};
-use crate::{parser::App, Message};
+use crate::{FOOTER_HEIGHT, LAUNCH_ICON, Revmo, helpers, styles};
+use crate::{Message, parser::App};
 
 pub fn view<'a>(state: &'a Revmo, app: &'a App) -> Element<'a, Message> {
     if state.app_args.is_empty() {
@@ -30,7 +30,10 @@ pub fn view<'a>(state: &'a Revmo, app: &'a App) -> Element<'a, Message> {
                     .id(i.to_string())
                     .padding(12)
                     .on_input(move |input| Message::ArgsChange(i, input))
-                    .on_submit(Message::RunWithArgs(app.id, state.exec_args.clone()))
+                    .on_submit(Message::RunWithArgs(
+                        app.key.clone(),
+                        state.exec_args.clone()
+                    ))
             ]
             .align_y(Alignment::Center)
             .into(),
@@ -58,7 +61,7 @@ pub fn view<'a>(state: &'a Revmo, app: &'a App) -> Element<'a, Message> {
         border: border::rounded(10),
         ..button::primary(t, s)
     })
-    .on_press_with(|| Message::RunWithArgs(app.id, state.exec_args.clone()));
+    .on_press_with(|| Message::RunWithArgs(app.key.clone(), state.exec_args.clone()));
 
     let footer = if let Some((msg, level)) = &state.toast {
         helpers::show_toast(msg.clone(), level.clone(), &state.theme)
@@ -71,7 +74,7 @@ pub fn view<'a>(state: &'a Revmo, app: &'a App) -> Element<'a, Message> {
             text('\u{f060}')
                 .size(20)
                 .color(state.theme.palette().danger),
-            Space::with_width(Fill),
+            Space::new().width(Fill),
             text("\u{f0311} Run")
                 .size(20)
                 .color(state.theme.palette().success)

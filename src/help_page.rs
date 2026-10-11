@@ -1,7 +1,7 @@
 use crate::styles::{self, Icons};
 use crate::{Message, Revmo};
-use iced::widget::{column, container, row, text, Space, Text};
 use iced::Length::Fill;
+use iced::widget::{Space, Text, column, container, row, text};
 use iced::{Alignment, Element};
 
 const CELL_HEIGHT: f32 = 30.0;
@@ -13,7 +13,7 @@ pub fn view(state: &Revmo) -> Element<'static, Message> {
             Icons::get_logo(),
             text("Developed by github.com/qzakwani").font(styles::FONT_BOLD),
             text("For updates visit: github.com/qzakwani/revmo").font(styles::FONT_BOLD),
-            Space::with_height(20),
+            Space::new().height(20),
             text(format!("Selected theme: {}", state.theme)),
             text("Keyboard shortcuts:"),
             row![

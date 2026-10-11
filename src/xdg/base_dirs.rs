@@ -99,10 +99,11 @@ fn collect_desktop_files(root: &Path, dir: &Path, depth: usize, out: &mut Vec<De
         // is_dir/is_file follow symlinks, which Flatpak exports rely on.
         if path.is_dir() {
             collect_desktop_files(root, &path, depth + 1, out);
-        } else if path.extension().is_some_and(|e| e == "desktop") && path.is_file() {
-            if let Some(id) = desktop_id(root, &path) {
-                out.push(DesktopFile { id, path });
-            }
+        } else if path.extension().is_some_and(|e| e == "desktop")
+            && path.is_file()
+            && let Some(id) = desktop_id(root, &path)
+        {
+            out.push(DesktopFile { id, path });
         }
     }
 }

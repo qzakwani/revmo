@@ -4,25 +4,25 @@
 
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize};
 
 /// A command line template: one entry per argument.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Archive, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Exec {
     args: Vec<Arg>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Archive, Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Arg(Vec<Piece>);
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Archive, Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum Piece {
     Text(String),
     Code(FieldCode),
 }
 
 /// Field codes that take a file or URL from the user.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Archive, Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum FieldCode {
     File,
     Files,

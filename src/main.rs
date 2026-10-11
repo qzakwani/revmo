@@ -13,10 +13,10 @@ use std::time::Duration;
 use std::{env, thread, vec};
 
 use iced::keyboard::key::{Key, Named};
-use iced::widget::text_input::focus;
-use iced::widget::{column, container, focus_next, focus_previous, row, text, text_input, Space};
+use iced::widget::operation::{focus, focus_next, focus_previous};
+use iced::widget::{Space, column, container, row, text, text_input};
 use iced::window::settings::PlatformSpecific;
-use iced::{event, keyboard, window, Alignment, Event, Padding, Settings};
+use iced::{Alignment, Event, Padding, Settings, event, keyboard, widget, window};
 use iced::{Element, Subscription, Task};
 use iced::{Fill, Theme};
 use parser::App;
@@ -30,8 +30,8 @@ static HOME_DIR: LazyLock<String> = LazyLock::new(|| {
         .to_string_lossy()
         .to_string()
 });
-static INPUT: LazyLock<text_input::Id> = LazyLock::new(|| text_input::Id::new("input"));
-static CONTAINER: LazyLock<container::Id> = LazyLock::new(|| container::Id::new("main"));
+static INPUT: LazyLock<widget::Id> = LazyLock::new(|| widget::Id::new("input"));
+static CONTAINER: LazyLock<widget::Id> = LazyLock::new(|| widget::Id::new("main"));
 const DEFAULT_APP_ICON: char = '\u{f40e}';
 const APP_HEIGHT: f32 = 60.0;
 const APP_PADDING: f32 = 4.0;
@@ -90,8 +90,10 @@ fn main() -> iced::Result {
             ..PlatformSpecific::default()
         },
         exit_on_close_request: true,
+        ..window::Settings::default()
     };
-    iced::application("REVMO", Revmo::update, Revmo::view)
+    iced::application(Revmo::new, Revmo::update, Revmo::view)
+        .title("REVMO")
         .settings(Settings {
             id: Some(String::from("revmo")),
             ..Settings::default()
@@ -103,7 +105,7 @@ fn main() -> iced::Result {
         .font(include_bytes!("../fonts/JetBrainsMonoNerdFont-Bold.ttf").as_slice())
         .default_font(styles::FONT_LIGHT)
         .subscription(Revmo::subscription)
-        .run_with(Revmo::new)
+        .run()
 }
 
 struct Revmo {
@@ -147,8 +149,9 @@ enum Message {
     ViewArgs,
     HideArgs,
     ArgsChange(usize, String),
-    RunWithArgs(usize, Vec<String>),
-    RunPress(usize),
+    /// Apps are named by key: ids would change if a rescan lands in between.
+    RunWithArgs(String, Vec<String>),
+    RunPress(String),
     RemoveApp,
     RunFailed,
     Refresh,
@@ -163,8 +166,19 @@ enum Message {
 }
 
 impl Revmo {
+    /// Opens with the cached apps right away, then checks in the background
+    /// whether they're stale; if so the list updates once the scan is done.
     fn new() -> (Self, Task<Message>) {
-        (Revmo::_new(), load_apps(false))
+        let mut revmo = Revmo::_new();
+        let Some((fingerprint, apps)) = App::cached() else {
+            // First run or unreadable cache: show "Loading" until scanned.
+            return (revmo, scan_if_changed(None));
+        };
+        let shown = revmo.update(Message::AppsLoaded(apps));
+        (
+            revmo,
+            Task::batch([shown, scan_if_changed(Some(fingerprint))]),
+        )
     }
 
     fn _new() -> Self {
@@ -191,9 +205,9 @@ impl Revmo {
         }
     }
 
-    /// Launches the app with the given id and closes revmo on success.
-    fn run(&mut self, id: usize, inputs: &[String]) -> Task<Message> {
-        let Some(app) = self.apps.iter().find(|a| a.id == id) else {
+    /// Launches the app with the given key and closes revmo on success.
+    fn run(&mut self, key: &str, inputs: &[String]) -> Task<Message> {
+        let Some(app) = self.apps.iter().find(|a| a.key == key) else {
             return Task::done(Message::RunFailed);
         };
         if let Err(err) = app.launch(inputs) {
@@ -260,6 +274,10 @@ impl Revmo {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::AppsLoaded(mut apps) => {
+                // This can arrive while the list is in use (a background
+                // rescan), so keep the selection and the arguments page.
+                let selected = self.selected_app().map(|a| (a.key.clone(), a.arg_codes()));
+                let was_loading = self.is_loading;
                 apps.retain(|a| !self.config.hidden.contains(&a.key));
                 // Stable sort: apps never launched stay alphabetical.
                 let now = usage::now();
@@ -271,7 +289,23 @@ impl Revmo {
                 self.apps = apps;
                 self.is_loading = false;
                 self.filter();
-                focus(INPUT.clone()).map(Message::Junk)
+                if let Some((key, codes)) = selected {
+                    let pos = self.visible.iter().position(|&i| self.apps[i].key == key);
+                    if let Some(pos) = pos {
+                        self.selected = pos;
+                    }
+                    // Its inputs only make sense for the same app and arguments.
+                    let same =
+                        pos.is_some() && self.selected_app().map(App::arg_codes) == Some(codes);
+                    if self.is_args && !same {
+                        return self.update(Message::HideArgs);
+                    }
+                }
+                if was_loading {
+                    focus(INPUT.clone()).map(Message::Junk)
+                } else {
+                    Task::none()
+                }
             }
             Message::SearchChanged(input) => {
                 self.search = input;
@@ -280,7 +314,7 @@ impl Revmo {
             }
 
             Message::RunIndex => match self.selected_app() {
-                Some(app) => self.run(app.id, &[]),
+                Some(app) => self.run(&app.key.clone(), &[]),
                 None => Task::done(Message::RunFailed),
             },
 
@@ -304,7 +338,10 @@ impl Revmo {
             }
 
             Message::ArgsChange(i, arg) => {
-                self.exec_args[i] = arg;
+                // A rescan may have closed the page since this was typed.
+                if let Some(input) = self.exec_args.get_mut(i) {
+                    *input = arg;
+                }
                 Task::none()
             }
 
@@ -325,9 +362,9 @@ impl Revmo {
                 focus(INPUT.clone())
             }
 
-            Message::RunWithArgs(id, args) => self.run(id, &args),
+            Message::RunWithArgs(key, args) => self.run(&key, &args),
 
-            Message::RunPress(id) => self.run(id, &[]),
+            Message::RunPress(key) => self.run(&key, &[]),
 
             Message::RemoveApp => {
                 if let Some(&index) = self.visible.get(self.selected) {
@@ -353,7 +390,7 @@ impl Revmo {
                 Task::none()
             }
 
-            Message::Exit => window::get_latest().and_then(window::close),
+            Message::Exit => window::latest().and_then(window::close),
 
             Message::WindowFocused => {
                 self.was_focused = true;
@@ -378,7 +415,7 @@ impl Revmo {
                 self.exec_args.clear();
                 self.is_loading = true;
                 let toast = self.notify("Apps rescanned.".into(), ToastLevel::Success);
-                Task::batch([load_apps(true), toast])
+                Task::batch([rescan(), toast])
             }
 
             Message::ForwardTheme => {
@@ -412,10 +449,10 @@ impl Revmo {
             return help_page::view(self);
         }
 
-        if self.is_args {
-            if let Some(app) = self.selected_app() {
-                return args_page::view(self, app);
-            }
+        if self.is_args
+            && let Some(app) = self.selected_app()
+        {
+            return args_page::view(self, app);
         }
 
         let input = text_input("", &self.search)
@@ -454,12 +491,12 @@ impl Revmo {
                     text(format!("{}/{}", active_batch, total_batches))
                         .style(styles::page_counter_style)
                         .size(18),
-                    Space::with_width(Fill),
+                    Space::new().width(Fill),
                     text("\u{f0634} \u{f0fd} ")
                         .size(24)
                         .style(styles::page_counter_style)
                         .align_y(Alignment::Center),
-                    Space::with_width(Fill),
+                    Space::new().width(Fill),
                     text("\u{f12b7} ")
                         .size(24)
                         .color(self.theme.palette().danger)
@@ -489,12 +526,18 @@ impl Revmo {
     }
 }
 
-/// Scans (or loads the cached) apps off the UI thread.
-fn load_apps(force_scan: bool) -> Task<Message> {
+/// Rescans off the UI thread if the apps changed since `fingerprint`.
+fn scan_if_changed(fingerprint: Option<u64>) -> Task<Message> {
     Task::perform(
-        helpers::on_thread(move || App::get(force_scan)),
-        Message::AppsLoaded,
+        helpers::on_thread(move || App::scan_if_changed(fingerprint)),
+        |apps| apps,
     )
+    .and_then(|apps| Task::done(Message::AppsLoaded(apps)))
+}
+
+/// Rescans off the UI thread.
+fn rescan() -> Task<Message> {
+    Task::perform(helpers::on_thread(App::scan), Message::AppsLoaded)
 }
 
 fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
@@ -525,7 +568,7 @@ fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
 
 /// Emits `Exit` whenever another `revmo` starts (see instance.rs).
 fn other_instances() -> impl iced::futures::Stream<Item = Message> {
-    iced::stream::channel(1, |output| async move {
+    iced::stream::channel(1, async move |output| {
         if let Some(listener) = INSTANCE_SOCKET.lock().unwrap().take() {
             thread::spawn(move || {
                 for _ in listener.incoming() {

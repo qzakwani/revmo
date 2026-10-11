@@ -80,10 +80,10 @@ fn parse_with(
     if !shown_in(main, &ctx.desktops) {
         return Err(Skip::NotShownIn);
     }
-    if let Some(try_exec) = main.string("TryExec") {
-        if !executable_exists(&try_exec) {
-            return Err(Skip::TryExecNotFound);
-        }
+    if let Some(try_exec) = main.string("TryExec")
+        && !executable_exists(&try_exec)
+    {
+        return Err(Skip::TryExecNotFound);
     }
 
     let name = main

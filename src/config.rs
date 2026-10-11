@@ -10,10 +10,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use crate::theme;
 use crate::HOME_DIR;
+use crate::theme;
 use revmo::xdg::base_dirs::config_home;
-use revmo::xdg::keyfile::{escape, KeyFile};
+use revmo::xdg::keyfile::{KeyFile, escape};
 
 const GROUP: &str = "Revmo";
 
@@ -83,11 +83,12 @@ impl Config {
     }
 }
 
-/// Earlier versions stored a bincode-encoded theme index in `revmo.conf`.
+/// Earlier versions stored a theme index in `revmo.conf`, bincode-encoded:
+/// a little-endian u64.
 fn migrate_legacy(path: &Path) -> Option<Config> {
     let bytes = fs::read(path).ok()?;
     let _ = fs::remove_file(path);
-    let index: u64 = bincode::deserialize(&bytes).ok()?;
+    let index = u64::from_le_bytes(bytes.get(..8)?.try_into().ok()?);
     let theme = theme::THEMES.get(usize::try_from(index).ok()?)?;
     Some(Config {
         theme: theme.to_string(),
@@ -118,12 +119,12 @@ mod tests {
     fn migrates_theme_index() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("revmo.conf");
-        fs::write(&path, bincode::serialize(&4u64).unwrap()).unwrap();
+        fs::write(&path, 4u64.to_le_bytes()).unwrap();
         let config = migrate_legacy(&path).unwrap();
         assert_eq!(config.theme, theme::THEMES[4].to_string());
         assert!(!path.exists());
 
-        fs::write(&path, bincode::serialize(&9999u64).unwrap()).unwrap();
+        fs::write(&path, 9999u64.to_le_bytes()).unwrap();
         assert_eq!(migrate_legacy(&path), None);
     }
 }

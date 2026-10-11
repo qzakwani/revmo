@@ -4,13 +4,13 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::{store, HOME_DIR};
+use crate::{HOME_DIR, store};
 use revmo::launch;
 use revmo::search::Haystack;
 use revmo::xdg::desktop_entry::{self, Context};
-use revmo::xdg::exec::{split_user_args, Exec, FieldCode};
+use revmo::xdg::exec::{Exec, FieldCode, split_user_args};
 use revmo::xdg::icons::{self, IconLookup};
 use revmo::xdg::{base_dirs, keyfile::Locale};
 
@@ -18,9 +18,8 @@ use revmo::xdg::{base_dirs, keyfile::Locale};
 // sharp on 2x HiDPI screens; they scale down cleanly on 1x ones.
 const ICON_LOOKUP_SIZE: u32 = 64;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Archive, Serialize, Deserialize, Debug, Clone)]
 pub struct App {
-    pub id: usize,
     /// Stable identity across rescans: the desktop file ID, plus
     /// `/<action id>` for actions.
     pub key: String,
@@ -35,24 +34,27 @@ pub struct App {
 }
 
 impl App {
-    /// The cached apps if nothing changed since they were scanned, else a
-    /// fresh scan. Blocks on file IO.
-    pub fn get(force_scan: bool) -> Vec<App> {
+    /// The apps from the last scan and the fingerprint they were scanned
+    /// with, without checking that they're still current.
+    pub fn cached() -> Option<(u64, Vec<App>)> {
+        store::get_apps()
+    }
+
+    /// A fresh scan if the desktop files or environment changed since
+    /// `fingerprint` (or there is none), else `None`. Blocks on file IO.
+    pub fn scan_if_changed(fingerprint: Option<u64>) -> Option<Vec<App>> {
         let home = Path::new(HOME_DIR.as_str());
         let data_dirs = base_dirs::data_dirs(home);
-        let fingerprint = fingerprint(&data_dirs);
-        if !force_scan {
-            if let Some(apps) = store::get_apps(fingerprint) {
-                return apps;
-            }
-        }
-        let mut apps = scan(home, &data_dirs);
-        apps.sort_by_cached_key(|a| a.name.to_lowercase());
-        for (i, app) in apps.iter_mut().enumerate() {
-            app.id = i;
-        }
-        store::store_apps(fingerprint, &apps);
-        apps
+        let current = self::fingerprint(&data_dirs);
+        (fingerprint != Some(current)).then(|| scan_and_store(home, &data_dirs, current))
+    }
+
+    /// A fresh scan, whether or not anything changed. Blocks on file IO.
+    pub fn scan() -> Vec<App> {
+        let home = Path::new(HOME_DIR.as_str());
+        let data_dirs = base_dirs::data_dirs(home);
+        let current = fingerprint(&data_dirs);
+        scan_and_store(home, &data_dirs, current)
     }
 
     /// What the search box matches against, with each text's weight.
@@ -109,6 +111,15 @@ fn fingerprint(data_dirs: &[std::path::PathBuf]) -> u64 {
     hasher.finish()
 }
 
+/// Scans with the fingerprint taken before scanning, so a file changed
+/// mid-scan triggers another scan next time.
+fn scan_and_store(home: &Path, data_dirs: &[std::path::PathBuf], fingerprint: u64) -> Vec<App> {
+    let mut apps = scan(home, data_dirs);
+    apps.sort_by_cached_key(|a| a.name.to_lowercase());
+    store::store_apps(fingerprint, &apps);
+    apps
+}
+
 fn scan(home: &Path, data_dirs: &[std::path::PathBuf]) -> Vec<App> {
     let ctx = Context {
         locale: Locale::from_env(),
@@ -135,7 +146,6 @@ fn scan(home: &Path, data_dirs: &[std::path::PathBuf]) -> Vec<App> {
         let icon = entry.icon.as_deref().and_then(|i| icons.find(i));
         let icon = icon.map(|p| p.to_string_lossy().into_owned());
         let app = |key: String, action: Option<String>, exec: Exec, icon: Option<String>| App {
-            id: 0,
             key,
             name: entry.name.clone(),
             action,
