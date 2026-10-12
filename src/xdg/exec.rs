@@ -50,6 +50,16 @@ impl FieldCode {
         }
     }
 
+    /// What it takes, in a word: `file`, `files`, `url` or `urls`.
+    pub fn noun(self) -> &'static str {
+        match self {
+            FieldCode::File => "file",
+            FieldCode::Files => "files",
+            FieldCode::Url => "url",
+            FieldCode::Urls => "urls",
+        }
+    }
+
     pub fn description(self) -> &'static str {
         match self {
             FieldCode::File => "a file",

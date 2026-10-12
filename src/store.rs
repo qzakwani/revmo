@@ -1,4 +1,4 @@
-//! Cache of scanned apps, so startup doesn't rescan every time.
+//! Caches of scanned apps and themes, so startup doesn't rescan every time.
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -8,15 +8,20 @@ use rkyv::rancor::Error;
 use rkyv::util::AlignedVec;
 use rkyv::{Archive, Deserialize, Serialize};
 
+use crate::theme::ThemeDef;
 use crate::{HOME_DIR, parser::App};
 use revmo::files::write_atomic;
 use revmo::xdg::base_dirs::cache_home;
 
 // Bump when App or scanning changes, so old caches are rebuilt.
 const VERSION: u32 = 2;
+// Bump when ThemeDef or theme parsing changes.
+const THEMES_VERSION: u32 = 2;
 
 static CACHE_FILE: LazyLock<PathBuf> =
     LazyLock::new(|| cache_home(Path::new(HOME_DIR.as_str())).join("revmo/apps"));
+static THEMES_FILE: LazyLock<PathBuf> =
+    LazyLock::new(|| cache_home(Path::new(HOME_DIR.as_str())).join("revmo/themes"));
 
 #[derive(Archive, Serialize, Deserialize)]
 struct Cache {
@@ -24,6 +29,14 @@ struct Cache {
     /// Identifies the desktop files and environment the apps were scanned from.
     fingerprint: u64,
     apps: Vec<App>,
+}
+
+#[derive(Archive, Serialize, Deserialize)]
+struct ThemeCache {
+    version: u32,
+    /// Identifies the theme files the themes were read from.
+    fingerprint: u64,
+    themes: Vec<ThemeDef>,
 }
 
 /// The cached apps and the fingerprint they were scanned with.
@@ -37,10 +50,26 @@ pub fn store_apps(fingerprint: u64, apps: &[App]) {
     }
 }
 
-fn read(path: &Path) -> Option<(u64, Vec<App>)> {
-    // rkyv reads the data in place, so the buffer must be aligned for it.
+/// The cached theme files' themes and the fingerprint they were read with.
+pub fn get_themes() -> Option<(u64, Vec<ThemeDef>)> {
+    read_themes(&THEMES_FILE)
+}
+
+pub fn store_themes(fingerprint: u64, themes: &[ThemeDef]) {
+    if let Err(e) = write_themes(&THEMES_FILE, fingerprint, themes) {
+        eprintln!("Failed to store themes: {e}");
+    }
+}
+
+/// rkyv reads the data in place, so the buffer must be aligned for it.
+fn read_bytes(path: &Path) -> Option<AlignedVec<16>> {
     let mut bytes = AlignedVec::<16>::new();
     bytes.extend_from_reader(&mut File::open(path).ok()?).ok()?;
+    Some(bytes)
+}
+
+fn read(path: &Path) -> Option<(u64, Vec<App>)> {
+    let bytes = read_bytes(path)?;
     // Validated, so a corrupt cache or one in an older format is rejected.
     let cache = rkyv::access::<ArchivedCache, Error>(&bytes).ok()?;
     if cache.version != VERSION || cache.apps.is_empty() {
@@ -58,6 +87,26 @@ fn write(path: &Path, fingerprint: u64, apps: &[App]) -> std::io::Result<()> {
     };
     let bytes = rkyv::to_bytes::<Error>(&cache).map_err(std::io::Error::other)?;
     // Atomic, so quitting mid-write can't leave a cache that fails to load.
+    write_atomic(path, &bytes)
+}
+
+fn read_themes(path: &Path) -> Option<(u64, Vec<ThemeDef>)> {
+    let bytes = read_bytes(path)?;
+    let cache = rkyv::access::<ArchivedThemeCache, Error>(&bytes).ok()?;
+    if cache.version != THEMES_VERSION {
+        return None;
+    }
+    let themes = rkyv::deserialize::<Vec<ThemeDef>, Error>(&cache.themes).ok()?;
+    Some((cache.fingerprint.to_native(), themes))
+}
+
+fn write_themes(path: &Path, fingerprint: u64, themes: &[ThemeDef]) -> std::io::Result<()> {
+    let cache = ThemeCache {
+        version: THEMES_VERSION,
+        fingerprint,
+        themes: themes.to_vec(),
+    };
+    let bytes = rkyv::to_bytes::<Error>(&cache).map_err(std::io::Error::other)?;
     write_atomic(path, &bytes)
 }
 
@@ -101,6 +150,20 @@ mod tests {
             );
             assert_eq!((&a.generic_name, &a.icon), (&b.generic_name, &b.icon));
         }
+    }
+
+    #[test]
+    fn round_trips_themes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("themes");
+        let themes = crate::theme::built_in();
+        write_themes(&path, 7, &themes).unwrap();
+        assert_eq!(read_themes(&path), Some((7, themes.to_vec())));
+        // No theme files is a valid, cacheable result.
+        write_themes(&path, 8, &[]).unwrap();
+        assert_eq!(read_themes(&path), Some((8, Vec::new())));
+        std::fs::write(&path, [0xff; 64]).unwrap();
+        assert_eq!(read_themes(&path), None);
     }
 
     #[test]

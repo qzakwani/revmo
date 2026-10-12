@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env;
 use std::fs::read_to_string;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -72,6 +73,18 @@ impl App {
         Haystack::new(fields)
     }
 
+    /// For an action, the key of the app it belongs to.
+    pub fn parent_key(&self) -> Option<&str> {
+        self.action.as_ref()?;
+        self.key.split_once('/').map(|(parent, _)| parent)
+    }
+
+    /// Whether the config's `Hidden=` list names it, or the app it belongs to.
+    pub fn is_hidden(&self, hidden: &[String]) -> bool {
+        let listed = |key: &str| hidden.iter().any(|h| h == key);
+        listed(&self.key) || self.parent_key().is_some_and(listed)
+    }
+
     /// The file/URL arguments the app takes, in order.
     pub fn arg_codes(&self) -> Vec<FieldCode> {
         self.exec.codes()
@@ -96,6 +109,46 @@ impl App {
             self.working_dir.as_deref(),
         )
     }
+}
+
+/// For each of `apps`, the index of the app it's shown under: an action's
+/// app, or itself. Actions whose app isn't in the list stand on their own.
+pub fn parents(apps: &[App]) -> Vec<usize> {
+    let index: HashMap<&str, usize> = apps
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| a.action.is_none())
+        .map(|(i, a)| (a.key.as_str(), i))
+        .collect();
+    apps.iter()
+        .enumerate()
+        .map(|(i, a)| {
+            a.parent_key()
+                .and_then(|p| index.get(p).copied())
+                .unwrap_or(i)
+        })
+        .collect()
+}
+
+/// The apps to show, best first, given each entry's score (`None` if it
+/// doesn't match): an app scores as well as its best matching entry, so an
+/// action's match shows its app. Ties keep the order of `scores`.
+pub fn rank_groups(scores: &[Option<f64>], parents: &[usize]) -> Vec<usize> {
+    let mut best: Vec<Option<f64>> = vec![None; scores.len()];
+    for (i, score) in scores.iter().enumerate() {
+        if let Some(score) = *score {
+            let group = &mut best[parents[i]];
+            *group = Some(group.map_or(score, |b: f64| b.max(score)));
+        }
+    }
+    let mut ranked: Vec<(f64, usize)> = best
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, s)| s.map(|s| (s, i)))
+        .collect();
+    // Stable, so ties keep the frecency order of the apps.
+    ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
+    ranked.into_iter().map(|(_, i)| i).collect()
 }
 
 /// Changes whenever a desktop file is added, removed or edited, or the
@@ -173,4 +226,61 @@ fn scan(home: &Path, data_dirs: &[std::path::PathBuf]) -> Vec<App> {
         }
     }
     apps
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use revmo::xdg::exec::EntryInfo;
+
+    fn app(key: &str, action: Option<&str>) -> App {
+        let info = EntryInfo {
+            name: key,
+            icon: None,
+            path: Path::new("/x.desktop"),
+        };
+        App {
+            key: key.into(),
+            name: key.into(),
+            action: action.map(Into::into),
+            generic_name: None,
+            keywords: Vec::new(),
+            icon: None,
+            exec: Exec::parse("x", &info).unwrap(),
+            terminal: false,
+            working_dir: None,
+        }
+    }
+
+    #[test]
+    fn groups_actions_under_their_app() {
+        let apps = [
+            app("firefox.desktop/private", Some("Private")),
+            app("vim.desktop", None),
+            app("firefox.desktop", None),
+            app("gone.desktop/new", Some("New")),
+        ];
+        assert_eq!(parents(&apps), [2, 1, 2, 3]);
+
+        // Only Firefox's action matches: Firefox shows, above a weaker Vim.
+        let scores = [Some(50.0), Some(10.0), None, None];
+        assert_eq!(rank_groups(&scores, &parents(&apps)), [2, 1]);
+        // The app's best entry counts; ties keep the list order.
+        let scores = [Some(5.0), Some(10.0), Some(10.0), Some(1.0)];
+        assert_eq!(rank_groups(&scores, &parents(&apps)), [1, 2, 3]);
+    }
+
+    #[test]
+    fn hiding_an_app_hides_its_actions() {
+        let hidden = vec!["firefox.desktop".to_string()];
+        assert!(app("firefox.desktop", None).is_hidden(&hidden));
+        assert!(app("firefox.desktop/private", Some("Private")).is_hidden(&hidden));
+        assert!(!app("vim.desktop", None).is_hidden(&hidden));
+        // A key with a slash but no action is not an action.
+        assert!(!app("firefox.desktop/x", None).is_hidden(&hidden));
+        // Older configs could hide a single action.
+        let hidden = vec!["firefox.desktop/private".to_string()];
+        assert!(app("firefox.desktop/private", Some("Private")).is_hidden(&hidden));
+        assert!(!app("firefox.desktop", None).is_hidden(&hidden));
+    }
 }

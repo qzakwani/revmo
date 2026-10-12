@@ -68,6 +68,48 @@ impl Haystack {
     }
 }
 
+/// Which characters of `text` (by char index, ascending) to highlight for
+/// `query`; display only, ranking is [`Haystack::score`]'s job. Each word of
+/// the query is shown as a run of consecutive characters if it appears in
+/// `text`, preferring one that starts a word, and otherwise, if `letters`,
+/// letter by letter at the earliest positions. A word not found in `text`
+/// (it matched some other field) highlights nothing.
+pub fn highlight(text: &str, query: &str, letters: bool) -> Vec<usize> {
+    let original: Vec<char> = text.chars().collect();
+    let chars: Vec<char> = original.iter().map(|&c| lower(c)).collect();
+    let starts_word = |i: usize| i == 0 || is_word_start(original[i - 1], original[i]);
+    let mut marked = Vec::new();
+    for word in query.split_whitespace() {
+        let word: Vec<char> = word.chars().map(lower).collect();
+        if word.len() > chars.len() {
+            continue;
+        }
+        let runs: Vec<usize> = (0..=chars.len() - word.len())
+            .filter(|&i| chars[i..i + word.len()] == word[..])
+            .collect();
+        if let Some(&start) = runs.iter().find(|&&i| starts_word(i)).or(runs.first()) {
+            marked.extend(start..start + word.len());
+            continue;
+        }
+        if !letters {
+            continue;
+        }
+        let mut found = Vec::with_capacity(word.len());
+        let mut letters = word.iter().peekable();
+        for (i, &c) in chars.iter().enumerate() {
+            if letters.next_if(|&&w| w == c).is_some() {
+                found.push(i);
+            }
+        }
+        if letters.peek().is_none() {
+            marked.extend(found);
+        }
+    }
+    marked.sort_unstable();
+    marked.dedup();
+    marked
+}
+
 fn lower(c: char) -> char {
     c.to_lowercase().next().unwrap_or(c)
 }
@@ -164,6 +206,26 @@ mod tests {
         // camelCase and digits start words too.
         assert!(score("GitKraken", "k").unwrap() > score("Gitkraken", "k").unwrap());
         assert!(score("Python 3.12", "3").unwrap() > score("Python3x", "x").unwrap());
+    }
+
+    #[test]
+    fn highlights_runs_then_letters() {
+        assert_eq!(highlight("Firefox", "fire", true), [0, 1, 2, 3]);
+        // A run at a word start beats an earlier one inside a word.
+        assert_eq!(highlight("Kite Iterm", "ite", true), [5, 6, 7]);
+        assert_eq!(highlight("LibreOffice Writer", "lw", true), [0, 12]);
+        assert_eq!(highlight("Firefox", "FF", true), [0, 4]);
+        assert_eq!(
+            highlight("Firefox", "fire fox", true),
+            [0, 1, 2, 3, 4, 5, 6]
+        );
+        // Words matching another field, and empty queries, mark nothing.
+        assert_eq!(highlight("Firefox", "browser fox", true), [4, 5, 6]);
+        assert!(highlight("Firefox", "", true).is_empty());
+        assert!(highlight("Vim", "vimm", true).is_empty());
+        // Runs only: scattered letters mark nothing.
+        assert!(highlight("Formula Editor", "fi", false).is_empty());
+        assert_eq!(highlight("LibreOffice", "fi", false), [7, 8]);
     }
 
     #[test]

@@ -13,8 +13,8 @@ DESKTOP_FILE_DIR="$DATA_HOME/applications"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$APP_NAME"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/$APP_NAME"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/$APP_NAME"
-# Only used by versions before 1.1.
-LEGACY_DATA_DIR="$DATA_HOME/$APP_NAME"
+# The themes that come with revmo (versions before 1.1 kept other data here).
+DATA_DIR="$DATA_HOME/$APP_NAME"
 
 red() { printf '\033[0;31m%s\033[0m\n' "$*"; }
 yellow() { printf '\033[0;33m%s\033[0m\n' "$*"; }
@@ -37,8 +37,8 @@ rm "$BIN_DIR/$APP_NAME"
 remove_file "$ICON_DIR/$ICON"
 remove_file "$DESKTOP_FILE_DIR/$APP_NAME.desktop"
 
-echo "Removing settings, history and cache..."
-rm -rf "$CONFIG_DIR" "$STATE_DIR" "$CACHE_DIR" "$LEGACY_DATA_DIR"
+echo "Removing settings, themes, history and cache..."
+rm -rf "$CONFIG_DIR" "$STATE_DIR" "$CACHE_DIR" "$DATA_DIR"
 if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
     rm -f "$XDG_RUNTIME_DIR/$APP_NAME.sock"
 fi
