@@ -4,11 +4,16 @@ set -eu
 
 APP_NAME="revmo"
 ICON="revmo.png"
+THEMES="revmo-themes.tar.gz"
 RELEASE_URL="https://github.com/qzakwani/$APP_NAME/releases/latest/download"
 
 BIN_DIR="$HOME/.local/bin"
 ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons"
 DESKTOP_FILE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+# Color themes that come with revmo; users add their own to
+# ~/.config/revmo/themes, which this never touches.
+THEME_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/revmo/themes"
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/revmo/config"
 
 red() { printf '\033[1;31m%s\033[0m\n' "$*"; }
 yellow() { printf '\033[1;33m%s\033[0m\n' "$*"; }
@@ -35,7 +40,7 @@ download() {
 }
 
 echo "Downloading the latest release..."
-if ! download "$APP_NAME" || ! download "$ICON"; then
+if ! download "$APP_NAME" || ! download "$ICON" || ! download "$THEMES"; then
     red "Failed to download revmo. Please check your internet connection and try again."
     exit 1
 fi
@@ -60,6 +65,38 @@ chmod +x "$TMP_DIR/$APP_NAME"
 # never leaves a broken binary behind.
 mv "$TMP_DIR/$APP_NAME" "$BIN_DIR/$APP_NAME"
 mv "$TMP_DIR/$ICON" "$ICON_DIR/$ICON"
+# Replaced as a whole, so themes dropped from revmo go away too.
+mkdir -p "$TMP_DIR/themes"
+tar -xzf "$TMP_DIR/$THEMES" -C "$TMP_DIR/themes"
+rm -rf "$THEME_DIR"
+mkdir -p "$(dirname "$THEME_DIR")"
+mv "$TMP_DIR/themes" "$THEME_DIR"
+
+# A starting config listing every setting, all commented out so the
+# defaults apply. Never replaces one the user already has.
+if [ ! -e "$CONFIG_FILE" ]; then
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    cat <<'EOF' > "$CONFIG_FILE"
+# Revmo settings. Every setting is optional: remove the # to use one.
+[Revmo]
+
+# Color theme; Ctrl+Left / Ctrl+Right also changes it.
+# Theme=Revmo Dark
+
+# Font family name, as listed by `fc-list : family`, e.g. JetBrains Mono.
+# Use a monospace font.
+# Font=
+
+# UI size, e.g. 1.5; empty or auto picks one from your monitor.
+# Scale=
+
+# Desktop file IDs of apps to leave out, separated by ;
+# Hidden=
+
+# Layout style. Not used yet: only the terminal style exists.
+# Style=terminal
+EOF
+fi
 
 cat <<EOF > "$DESKTOP_FILE_DIR/$APP_NAME.desktop"
 [Desktop Entry]

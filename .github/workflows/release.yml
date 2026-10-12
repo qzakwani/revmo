@@ -24,7 +24,8 @@ jobs:
           mkdir dist
           cp target/release/revmo dist/revmo
           cp resources/icon.png dist/revmo.png
-          cd dist && sha256sum revmo revmo.png > SHA256SUMS
+          tar -czf dist/revmo-themes.tar.gz -C themes .
+          cd dist && sha256sum revmo revmo.png revmo-themes.tar.gz > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*

@@ -1,14 +1,15 @@
 use std::thread;
 
+use iced::alignment::Horizontal;
 use iced::futures::channel::oneshot;
-use iced::{
-    Alignment, Color, Element,
-    Length::Fill,
-    Theme,
-    widget::{Column, Container, Space, button, column, container, image, row, svg, text},
-};
+use iced::widget::text::{Span, Wrapping};
+use iced::widget::{Space, container, image, mouse_area, rich_text, row, span, svg, text};
+use iced::{Alignment, Color, Element, Fill, Padding, mouse};
 
-use crate::{APP_HEIGHT, APP_PADDING, DEFAULT_APP_ICON, Message, ToastLevel, parser::App, styles};
+use crate::styles::{self, fonts};
+use crate::theme::Colors;
+use crate::{Message, ToastLevel, parser::App};
+use revmo::search::highlight;
 
 /// Runs blocking work on its own thread. iced's default executor is a small
 /// thread pool, so sleeping or doing file IO inside a future would stall it.
@@ -22,167 +23,215 @@ pub fn on_thread<T: Send + 'static>(
     async move { rx.await.expect("worker thread panicked") }
 }
 
-pub fn show_toast(msg: String, level: ToastLevel, t: &Theme) -> Container<'_, Message> {
-    let txt: Color;
-    let bg: Color;
-    match level {
-        ToastLevel::Error => {
-            txt = t.extended_palette().danger.strong.text;
-            bg = t.extended_palette().danger.strong.color;
-        }
-        ToastLevel::Success => {
-            txt = t.extended_palette().success.strong.text;
-            bg = t.extended_palette().success.strong.color;
-        }
-    }
-    container(text(msg).color(txt).size(20))
-        .width(Fill)
-        .style(move |_| container::Style {
-            background: Some(iced::Background::Color(bg)),
-            ..container::Style::default()
-        })
-        .align_y(Alignment::Center)
-        .align_x(Alignment::Center)
-        .width(Fill)
-}
-
-pub fn get_app_view<'a>(app: &'a App, selected: bool, theme: &'a Theme) -> Container<'a, Message> {
-    let icon = view_app_icon(app.icon.clone());
-    if selected {
-        container(
-            row![
-                Space::new().width(6),
-                icon,
-                Space::new().width(6),
-                button(get_inner_button(app, theme, true))
-                    .on_press(Message::RunPress(app.key.clone()))
-                    .style(|_, _| *styles::UNSELECTED_STYLE)
-                    .width(Fill)
-            ]
-            .align_y(Alignment::Center),
-        )
-        .height(APP_HEIGHT)
-        .align_y(Alignment::Center)
-        .padding(APP_PADDING)
-        .style(styles::selected_container_style)
-    } else {
-        container(
-            row![
-                Space::new().width(6),
-                icon,
-                Space::new().width(6),
-                button(get_inner_button(app, theme, false))
-                    .on_press(Message::RunPress(app.key.clone()))
-                    .width(Fill)
-                    .style(|_, _| *styles::UNSELECTED_STYLE)
-            ]
-            .align_y(Alignment::Center),
-        )
-        .height(APP_HEIGHT)
-        .align_y(Alignment::Center)
-        .padding(APP_PADDING)
-    }
-}
-
-pub fn view_app_icon(icon: Option<String>) -> Element<'static, Message> {
-    let _icon: Element<Message> = if let Some(p) = icon {
-        if p.ends_with(".svg") {
-            svg(p)
-                .height(styles::ICON_SIZE)
-                .width(styles::ICON_SIZE)
-                .into()
-        } else {
-            image(p)
-                .height(styles::ICON_SIZE)
-                .width(styles::ICON_SIZE)
-                .into()
-        }
-    } else {
-        container(
-            text(DEFAULT_APP_ICON)
-                .color(Color::BLACK)
-                .size(styles::ICON_SIZE * 0.9)
-                .align_y(Alignment::Center)
-                .align_x(Alignment::Center),
-        )
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
-        .height(styles::ICON_SIZE)
-        .width(styles::ICON_SIZE)
-        .into()
+/// The footer while a toast is showing.
+pub fn toast<'a>(msg: &str, level: &ToastLevel, c: Colors) -> Element<'a, Message> {
+    let color = match level {
+        ToastLevel::Error => c.danger,
+        ToastLevel::Success => c.success,
     };
-    _icon
+    // One line: cut long messages short rather than overflow the footer.
+    let room = styles::WINDOW_WIDTH - 2.0 - 2.0 * styles::PAD_X;
+    let limit = (room / (styles::SMALL_SIZE * 0.6)).floor() as usize;
+    let msg: String = if msg.chars().count() > limit {
+        let mut short: String = msg.chars().take(limit - 1).collect();
+        short.push('…');
+        short
+    } else {
+        msg.to_string()
+    };
+    styles::footer_bar(
+        c,
+        [styles::small(msg).color(color).into()],
+        Space::new().into(),
+    )
 }
 
-fn get_inner_button<'a>(app: &'a App, theme: &'a Theme, selected: bool) -> Column<'a, Message> {
-    let codes = app.arg_codes();
-    let args = (!codes.is_empty()).then(|| {
-        codes
-            .iter()
-            .map(|c| c.as_str())
-            .collect::<Vec<_>>()
-            .join(" ")
-    });
-    let mut inner = column![if selected {
-        text(app.name.clone())
-            .size(styles::PRIMARY_FONT_SIZE)
-            .font(styles::FONT_BOLD)
-            .color(styles::selected_color(theme))
-            .align_y(Alignment::Center)
+/// How a result row is drawn.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RowState {
+    Normal,
+    /// The selection: an inverted bar.
+    Selected,
+    /// The selection while the actions pane is open.
+    Marked,
+    /// Any other row while the actions pane is open.
+    Dimmed,
+}
+
+/// One app in the result list. `full` adds the secondary text and shortcut
+/// columns, which the actions pane leaves no room for.
+pub fn app_row<'a>(
+    app: &'a App,
+    query: &str,
+    state: RowState,
+    full: bool,
+    c: Colors,
+) -> Element<'a, Message> {
+    let selected = state == RowState::Selected;
+    let (fg, muted) = match state {
+        RowState::Selected => (
+            c.on_selection,
+            Color {
+                a: 0.75,
+                ..c.on_selection
+            },
+        ),
+        RowState::Dimmed => (c.text_dim, c.text_muted),
+        RowState::Normal | RowState::Marked => (c.text, c.text_muted),
+    };
+    let accent = (!selected).then_some(c.highlight);
+    // Dimmed rows stay quiet so the marked row stands out.
+    let query = if state == RowState::Dimmed { "" } else { query };
+    let title_width = if full {
+        styles::TITLE_WIDTH
     } else {
-        text(app.name.clone())
-            .size(styles::PRIMARY_FONT_SIZE)
-            .font(styles::FONT_MEDIUM)
-            .color(theme.palette().text)
-    }];
+        styles::PANE_TITLE_WIDTH
+    };
 
-    if app.action.is_some() && args.is_some() {
-        inner = inner.push(
-            row![
-                text(format!("{} {}", '\u{f140b}', app.action.clone().unwrap()))
-                    .size(styles::SECONDARY_FONT_SIZE)
-                    .color(if selected {
-                        styles::selected_color(theme)
-                    } else {
-                        theme.palette().text
-                    }),
-                text(format!("{} {}", '\u{f061}', args.clone().unwrap()))
-                    .size(styles::SECONDARY_FONT_SIZE)
-                    .color(if selected {
-                        styles::selected_color(theme)
-                    } else {
-                        theme.palette().text
-                    }),
-            ]
-            .spacing(10),
-        );
+    let mut columns = row![
+        container(app_icon(app.icon.as_deref(), styles::ICON_SIZE, muted)).width(styles::TAG_WIDTH),
+        container(
+            rich_text(highlighted(
+                &app.name,
+                query,
+                true,
+                accent,
+                styles::chars_fitting(title_width)
+            ))
+            .size(styles::ROW_SIZE)
+            .font(fonts().regular)
+            .color(fg)
+            .wrapping(Wrapping::None)
+        )
+        .width(Fill)
+        .padding(Padding::ZERO.right(8))
+        .clip(true),
+    ]
+    .align_y(Alignment::Center);
 
-        return inner;
+    if full {
+        // What the app is, or else what it runs.
+        let secondary = match app.generic_name.as_deref() {
+            Some(generic) if !generic.trim().is_empty() => highlighted(
+                generic,
+                query,
+                false,
+                accent,
+                styles::chars_fitting(styles::SECONDARY_WIDTH),
+            ),
+            _ => highlighted(
+                &app.exec.program(),
+                "",
+                false,
+                None,
+                styles::chars_fitting(styles::SECONDARY_WIDTH),
+            ),
+        };
+        columns = columns
+            .push(
+                container(
+                    rich_text(secondary)
+                        .size(styles::ROW_SIZE)
+                        .font(fonts().regular)
+                        .color(muted)
+                        .wrapping(Wrapping::None),
+                )
+                .width(styles::SECONDARY_WIDTH)
+                .clip(true),
+            )
+            .push(
+                text(if selected { "↲" } else { "" })
+                    .size(styles::ROW_SIZE)
+                    .font(fonts().medium)
+                    .color(fg)
+                    .width(styles::SHORTCUT_WIDTH)
+                    .align_x(Horizontal::Right),
+            );
     }
 
-    if let Some(action) = &app.action {
-        inner = inner.push(
-            text(format!("{} {}", '\u{f140b}', action))
-                .size(styles::SECONDARY_FONT_SIZE)
-                .color(if selected {
-                    styles::selected_color(theme)
-                } else {
-                    theme.palette().text
-                }),
-        );
-    }
+    let content = container(columns)
+        .height(styles::ROW_HEIGHT)
+        .width(Fill)
+        .align_y(Alignment::Center);
+    let body: Element<'a, Message> = match state {
+        RowState::Selected => content
+            .padding([0.0, styles::PAD_X])
+            .style(move |_| styles::selected(c))
+            .into(),
+        RowState::Marked => row![
+            container(Space::new())
+                .width(styles::MARK_WIDTH)
+                .height(styles::ROW_HEIGHT)
+                .style(move |_| styles::solid(c.accent)),
+            content
+                .padding([0.0, styles::PAD_X])
+                .style(move |_| styles::soft_selected(c)),
+        ]
+        .into(),
+        // Lined up with the text of a marked row.
+        RowState::Dimmed => content
+            .padding(Padding::from([0.0, styles::PAD_X]).left(styles::PAD_X + styles::MARK_WIDTH))
+            .into(),
+        RowState::Normal => content.padding([0.0, styles::PAD_X]).into(),
+    };
+    mouse_area(body)
+        .on_press(Message::RunPress(app.key.clone()))
+        .interaction(mouse::Interaction::Pointer)
+        .into()
+}
 
-    if let Some(args) = &args {
-        inner = inner.push(
-            text(format!("{} {}", '\u{f061}', args))
-                .size(styles::SECONDARY_FONT_SIZE)
-                .color(if selected {
-                    styles::selected_color(theme)
-                } else {
-                    theme.palette().text
-                }),
-        );
+/// `content` as spans, the characters matching `query` in semibold and,
+/// unless `accent` is `None`, in that color. `letters` also marks scattered
+/// letters, not just runs (see [`highlight`]). Text longer than `limit`
+/// characters is cut short with "…".
+pub fn highlighted<'a>(
+    content: &str,
+    query: &str,
+    letters: bool,
+    accent: Option<Color>,
+    limit: usize,
+) -> Vec<Span<'a, (), iced::Font>> {
+    let marked = highlight(content, query, letters);
+    let cut = content.chars().count() > limit;
+    let shown = if cut { limit.saturating_sub(1) } else { limit };
+    let mut spans = Vec::new();
+    let mut run = String::new();
+    let mut run_marked = false;
+    let mut flush = |run: &mut String, is_marked: bool| {
+        if run.is_empty() {
+            return;
+        }
+        let part = span(std::mem::take(run));
+        spans.push(if is_marked {
+            part.font(fonts().semibold).color_maybe(accent)
+        } else {
+            part
+        });
+    };
+    for (i, ch) in content.chars().take(shown).enumerate() {
+        let is_marked = marked.binary_search(&i).is_ok();
+        if is_marked != run_marked {
+            flush(&mut run, run_marked);
+            run_marked = is_marked;
+        }
+        run.push(ch);
     }
+    flush(&mut run, run_marked);
+    if cut {
+        spans.push(span("…"));
+    }
+    spans
+}
 
-    inner.spacing(4)
+/// The app's icon at `size`, or an `app` tag if it has none.
+pub fn app_icon(icon: Option<&str>, size: f32, tag_color: Color) -> Element<'static, Message> {
+    match icon {
+        Some(p) if p.ends_with(".svg") => svg(p).width(size).height(size).into(),
+        Some(p) => image(p).width(size).height(size).into(),
+        None => text("app")
+            .size(styles::ROW_SIZE)
+            .font(fonts().regular)
+            .color(tag_color)
+            .into(),
+    }
 }

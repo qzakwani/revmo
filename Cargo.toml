@@ -7,7 +7,7 @@ rust-version = "1.99"
 [dependencies]
 # tiny-skia only: drawing on the CPU opens the window faster than wgpu,
 # which has to set up the GPU first, and this UI doesn't need a GPU.
-iced = { version = "0.14.0", default-features = false, features = ["tiny-skia", "crisp", "thread-pool", "x11", "wayland", "image", "svg"] }
+iced = { version = "0.14.0", default-features = false, features = ["tiny-skia", "crisp", "thread-pool", "x11", "wayland", "image", "svg", "advanced"] }
 rkyv = "0.8.18"
 
 [dev-dependencies]

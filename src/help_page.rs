@@ -1,61 +1,111 @@
-use crate::styles::{self, Icons};
-use crate::{Message, Revmo};
-use iced::Length::Fill;
-use iced::widget::{Space, Text, column, container, row, text};
-use iced::{Alignment, Element};
+use iced::widget::{Space, column, container, rich_text, row, scrollable, span, text};
+use iced::{Element, Fill, Padding};
 
-const CELL_HEIGHT: f32 = 30.0;
-const ICON_SIZE: f32 = 25.0;
+use crate::styles::{self, fonts};
+use crate::{Message, Revmo, VERSION};
 
-pub fn view(state: &Revmo) -> Element<'static, Message> {
-    container(
-        column![
-            Icons::get_logo(),
-            text("Developed by github.com/qzakwani").font(styles::FONT_BOLD),
-            text("For updates visit: github.com/qzakwani/revmo").font(styles::FONT_BOLD),
-            Space::new().height(20),
-            text(format!("Selected theme: {}", state.theme)),
-            text("Keyboard shortcuts:"),
-            row![
-                column![
-                    keyboard_shortcut("\u{f0311}"),
-                    keyboard_shortcut("\u{f061}"),
-                    keyboard_shortcut("\u{f12b7}"),
-                    keyboard_shortcut("\u{f0634} \u{f0c00}"),
-                    keyboard_shortcut("\u{f0634} \u{f0c1e}"),
-                    keyboard_shortcut("\u{f0634} \u{f0bf4}"),
-                    keyboard_shortcut("\u{f0634} \u{f061}"),
-                    keyboard_shortcut("\u{f0634} \u{f060}"),
-                ],
-                column![
-                    keyboard_shortcut_exp("Run selected app"),
-                    keyboard_shortcut_exp("View/Edit selected app's arguments"),
-                    keyboard_shortcut_exp("Close Revmo"),
-                    keyboard_shortcut_exp("View/Hide this help page"),
-                    keyboard_shortcut_exp("Rescan installed apps"),
-                    keyboard_shortcut_exp("Remove selected app from Revmo"),
-                    keyboard_shortcut_exp("Next theme"),
-                    keyboard_shortcut_exp("Previous theme"),
-                ]
-            ]
-            .spacing(30)
+const KEY_WIDTH: f32 = 130.0;
+
+const SHORTCUTS: [(&str, &str); 8] = [
+    ("↲", "run the selected app"),
+    ("↑↓ / tab", "move the selection"),
+    ("→", "actions; arguments of an action"),
+    ("←", "back"),
+    ("ctrl+r", "reload the config, themes and apps"),
+    ("ctrl+→ / ctrl+←", "next / previous theme"),
+    ("ctrl+h", "this help"),
+    ("esc", "back, or close revmo"),
+];
+
+pub fn view(state: &Revmo) -> Element<'_, Message> {
+    let c = state.colors;
+    let font = fonts().family;
+    let scale = match state.scale_auto {
+        true => format!("auto ({})", state.scale),
+        false => format!("{}", state.scale),
+    };
+
+    let header = rich_text([
+        span::<(), _>("revmo ").color(c.accent).font(fonts().medium),
+        span(VERSION),
+        span(" · github.com/qzakwani/revmo").color(c.text_muted),
+    ])
+    .size(styles::ROW_SIZE)
+    .font(fonts().regular)
+    .color(c.text);
+
+    let settings = text(format!(
+        "theme: {} · font: {font} · scale: {scale}",
+        state.theme.name
+    ))
+    .size(styles::SECONDARY_SIZE)
+    .font(fonts().regular)
+    .color(c.text_muted);
+
+    let shortcuts = column(SHORTCUTS.iter().map(|&(key, what)| {
+        row![
+            text(key)
+                .size(styles::ROW_SIZE)
+                .font(fonts().regular)
+                .color(c.accent)
+                .width(KEY_WIDTH),
+            text(what)
+                .size(styles::ROW_SIZE)
+                .font(fonts().regular)
+                .color(c.text),
         ]
-        .spacing(12)
-        .align_x(Alignment::Center),
-    )
-    .height(Fill)
-    .width(Fill)
-    .align_x(Alignment::Center)
-    .align_y(Alignment::Center)
-    .into()
-}
+        .into()
+    }))
+    .spacing(5);
 
-fn keyboard_shortcut(icon: &str) -> Text<'_> {
-    text(icon)
-        .size(ICON_SIZE)
-        .height(CELL_HEIGHT)
-        .align_y(Alignment::Center)
-}
-fn keyboard_shortcut_exp(exp: &str) -> Text<'_> {
-    text(exp).height(CELL_HEIGHT).align_y(Alignment::Center)
+    // What's wrong in the config file, if anything, comes first.
+    let problems = state.problems();
+    let mut content = column![header, settings].spacing(6);
+    if !problems.is_empty() {
+        content = content.push(Space::new().height(8)).push(
+            text(format!("config problems ({})", problems.len()))
+                .size(styles::SMALL_SIZE)
+                .font(fonts().medium)
+                .color(c.danger),
+        );
+        content = content.push(
+            column(problems.into_iter().map(|problem| {
+                text(problem)
+                    .size(styles::SECONDARY_SIZE)
+                    .font(fonts().regular)
+                    .color(c.text)
+                    .into()
+            }))
+            .spacing(3),
+        );
+    }
+    content = content.push(Space::new().height(8)).push(shortcuts);
+
+    // Scrolls when there are many problems.
+    let body = container(
+        scrollable(
+            container(content)
+                .padding(Padding::from([16.0, styles::PAD_X]))
+                .width(Fill),
+        )
+        .width(Fill)
+        .direction(styles::scrollbar())
+        .style(move |theme, status| styles::scroll(c, theme, status)),
+    )
+    .width(Fill)
+    .height(Fill);
+
+    let hint = |s: &'static str| styles::small(s).color(c.text_muted).into();
+    column![
+        body,
+        styles::divider(c),
+        styles::footer_bar(
+            c,
+            [hint("ctrl+h back"), hint("esc close")],
+            styles::small(format!("revmo {VERSION}"))
+                .color(c.text_faint)
+                .into(),
+        ),
+    ]
+    .into()
 }

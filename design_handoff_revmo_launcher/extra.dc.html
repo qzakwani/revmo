@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#efede8;font-family:"Space Grotesk",system-ui,sans-serif}a{color:#1a1a1a}a:hover{color:#b0742a}.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}.dv-tname{font:600 13px/1.2 system-ui,sans-serif;color:#1a1a1a}.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 system-ui,sans-serif;color:rgba(0,0,0,.55)}.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}.dv-opt:target .dv-oid{background:#2a78d6;color:#fff}.dv-next{margin:22px 0 0;font:12px/1.5 system-ui,sans-serif;color:rgba(0,0,0,.5)}.dv-note{max-width:640px;font:13px/1.55 system-ui,sans-serif;color:rgba(0,0,0,.65);margin:0 0 24px}.dv-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}.dv-shot{display:flex;flex-direction:column;gap:6px}.dv-cap{font:11px ui-monospace,Menlo,monospace;color:rgba(0,0,0,.45)}</style></helmet>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Extra — directions not selected (<a href="revmo.dc.html">back to revmo</a>)</span></div>
+<div class="dv-opts" style="flex-direction:column;gap:40px">
+<div class="dv-opt" id="1a"><div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Quiet — frosted, airy, grouped results</div>
+<div class="dv-row">
+
+<div class="dv-shot"><span class="dv-cap">empty state · dark</span><div class="dv-card" style="width:620px;height:400px;background:linear-gradient(160deg,#3a3d45 0%,#1d1f25 60%,#15161a 100%);display:flex;justify-content:center;padding-top:44px;box-sizing:border-box">
+<div style="width:540px;height:fit-content;background:rgba(30,30,33,.78);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.1);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.45);color:#ececec;overflow:hidden">
+<div style="display:flex;align-items:center;gap:12px;padding:0 18px;height:58px">
+<span style="font:400 20px 'Space Grotesk';color:#8a8a8f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1">Search apps, files, or type a command</span>
+<span style="margin-left:auto;font:500 11px 'IBM Plex Mono';color:#8a8a8f;border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:3px 7px">esc</span>
+</div>
+<div style="height:1px;background:rgba(255,255,255,.08)"></div>
+<div style="padding:14px 18px 6px;font:500 11px 'Space Grotesk';letter-spacing:.08em;text-transform:uppercase;color:#8a8a8f">Recent</div>
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:4px 14px 14px">
+<div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 4px;border-radius:10px;background:rgba(255,255,255,.08)"><div style="width:36px;height:36px;border-radius:9px;background:#4a5f8a;display:grid;place-items:center;font:600 15px 'Space Grotesk';color:#fff">F</div><span style="font:400 11.5px 'Space Grotesk'">Firefox</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 4px;border-radius:10px"><div style="width:36px;height:36px;border-radius:9px;background:#6b5a8a;display:grid;place-items:center;font:600 15px 'Space Grotesk';color:#fff">T</div><span style="font:400 11.5px 'Space Grotesk'">Terminal</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 4px;border-radius:10px"><div style="width:36px;height:36px;border-radius:9px;background:#4f7f6c;display:grid;place-items:center;font:600 15px 'Space Grotesk';color:#fff">O</div><span style="font:400 11.5px 'Space Grotesk'">Obsidian</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 4px;border-radius:10px"><div style="width:36px;height:36px;border-radius:9px;background:#8a5a5a;display:grid;place-items:center;font:600 15px 'Space Grotesk';color:#fff">C</div><span style="font:400 11.5px 'Space Grotesk'">Code</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 4px;border-radius:10px"><div style="width:36px;height:36px;border-radius:9px;background:#5a7a8a;display:grid;place-items:center;font:600 15px 'Space Grotesk';color:#fff">S</div><span style="font:400 11.5px 'Space Grotesk'">Slack</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 4px;border-radius:10px"><div style="width:36px;height:36px;border-radius:9px;background:#7a6a4a;display:grid;place-items:center;font:600 15px 'Space Grotesk';color:#fff">M</div><span style="font:400 11.5px 'Space Grotesk'">Mail</span></div>
+</div>
+<div style="display:flex;align-items:center;gap:16px;padding:10px 18px;border-top:1px solid rgba(255,255,255,.08);font:400 11.5px 'Space Grotesk';color:#8a8a8f">
+<span style="display:flex;gap:6px;align-items:center"><span style="font:500 10.5px 'IBM Plex Mono';border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:1px 5px">↑↓</span>navigate</span>
+<span style="display:flex;gap:6px;align-items:center"><span style="font:500 10.5px 'IBM Plex Mono';border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:1px 5px">↵</span>open</span>
+<span style="display:flex;gap:6px;align-items:center"><span style="font:500 10.5px 'IBM Plex Mono';border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:1px 5px">tab</span>actions</span>
+<span style="margin-left:auto;font:500 12px 'Space Grotesk';color:#5e5e63;letter-spacing:.02em">revmo</span>
+</div>
+</div></div></div>
+
+<div class="dv-shot"><span class="dv-cap">results · dark</span><div class="dv-card" style="width:620px;height:480px;background:linear-gradient(160deg,#3a3d45 0%,#1d1f25 60%,#15161a 100%);display:flex;justify-content:center;padding-top:44px;box-sizing:border-box">
+<div style="width:540px;height:fit-content;background:rgba(30,30,33,.78);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.1);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.45);color:#ececec;overflow:hidden">
+<div style="display:flex;align-items:center;gap:12px;padding:0 18px;height:58px">
+<span style="font:400 20px 'Space Grotesk';color:#ececec">fire<span style="display:inline-block;width:1.5px;height:22px;background:oklch(0.78 0.14 60);vertical-align:-4px;margin-left:1px"></span></span>
+<span style="margin-left:auto;font:400 12px 'Space Grotesk';color:#8a8a8f">7 results</span>
+</div>
+<div style="height:1px;background:rgba(255,255,255,.08)"></div>
+<div style="padding:10px 8px 6px">
+<div style="padding:4px 10px 6px;font:500 11px 'Space Grotesk';letter-spacing:.08em;text-transform:uppercase;color:#8a8a8f">Applications</div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.1)"><div style="width:28px;height:28px;border-radius:7px;background:#4a5f8a;display:grid;place-items:center;font:600 12px 'Space Grotesk';color:#fff">F</div><span style="font:500 14px 'Space Grotesk'"><span style="color:oklch(0.78 0.14 60)">Fire</span>fox</span><span style="font:400 12px 'Space Grotesk';color:#8a8a8f">Web browser</span><span style="margin-left:auto;font:500 10.5px 'IBM Plex Mono';color:#8a8a8f">↵</span></div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px"><div style="width:28px;height:28px;border-radius:7px;background:#5a4a7a;display:grid;place-items:center;font:600 12px 'Space Grotesk';color:#fff">F</div><span style="font:500 14px 'Space Grotesk'"><span style="color:oklch(0.78 0.14 60)">Fire</span>fox Developer Edition</span><span style="margin-left:auto;font:500 10.5px 'IBM Plex Mono';color:#8a8a8f">⌘2</span></div>
+<div style="padding:12px 10px 6px;font:500 11px 'Space Grotesk';letter-spacing:.08em;text-transform:uppercase;color:#8a8a8f">Files</div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px"><div style="width:28px;height:28px;border-radius:7px;background:rgba(255,255,255,.08);display:grid;place-items:center;font:500 10px 'IBM Plex Mono';color:#bdbdc2">md</div><span style="font:500 14px 'Space Grotesk'"><span style="color:oklch(0.78 0.14 60)">fire</span>wall-notes.md</span><span style="font:400 12px 'IBM Plex Mono';color:#8a8a8f">~/notes</span><span style="margin-left:auto;font:500 10.5px 'IBM Plex Mono';color:#8a8a8f">⌘3</span></div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px"><div style="width:28px;height:28px;border-radius:7px;background:rgba(255,255,255,.08);display:grid;place-items:center;font:500 10px 'IBM Plex Mono';color:#bdbdc2">sh</div><span style="font:500 14px 'Space Grotesk'"><span style="color:oklch(0.78 0.14 60)">fire</span>-and-forget.sh</span><span style="font:400 12px 'IBM Plex Mono';color:#8a8a8f">~/bin</span><span style="margin-left:auto;font:500 10.5px 'IBM Plex Mono';color:#8a8a8f">⌘4</span></div>
+<div style="padding:12px 10px 6px;font:500 11px 'Space Grotesk';letter-spacing:.08em;text-transform:uppercase;color:#8a8a8f">Windows</div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px"><div style="width:28px;height:28px;border-radius:7px;background:#4a5f8a;display:grid;place-items:center;font:600 12px 'Space Grotesk';color:#fff">F</div><span style="font:500 14px 'Space Grotesk'">GitHub · <span style="color:oklch(0.78 0.14 60)">Fire</span>fox</span><span style="font:400 12px 'Space Grotesk';color:#8a8a8f">Workspace 2</span><span style="margin-left:auto;font:500 10.5px 'IBM Plex Mono';color:#8a8a8f">⌘5</span></div>
+</div>
+<div style="display:flex;align-items:center;gap:16px;padding:10px 18px;border-top:1px solid rgba(255,255,255,.08);font:400 11.5px 'Space Grotesk';color:#8a8a8f">
+<span style="display:flex;gap:6px;align-items:center"><span style="font:500 10.5px 'IBM Plex Mono';border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:1px 5px">↵</span>Open Firefox</span>
+<span style="display:flex;gap:6px;align-items:center"><span style="font:500 10.5px 'IBM Plex Mono';border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:1px 5px">tab</span>actions</span>
+<span style="margin-left:auto;font:500 12px 'Space Grotesk';color:#5e5e63">revmo</span>
+</div>
+</div></div></div>
+
+<div class="dv-shot"><span class="dv-cap">results · light</span><div class="dv-card" style="width:620px;height:400px;background:linear-gradient(160deg,#dcd9d2 0%,#c7c3ba 60%,#b4b0a6 100%);display:flex;justify-content:center;padding-top:44px;box-sizing:border-box">
+<div style="width:540px;height:fit-content;background:rgba(250,249,246,.82);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.7);border-radius:14px;box-shadow:0 24px 60px rgba(40,35,25,.28);color:#1b1b1d;overflow:hidden">
+<div style="display:flex;align-items:center;gap:12px;padding:0 18px;height:58px">
+<span style="font:400 20px 'Space Grotesk'">1920 / 1.5<span style="display:inline-block;width:1.5px;height:22px;background:oklch(0.6 0.14 60);vertical-align:-4px;margin-left:2px"></span></span>
+<span style="margin-left:auto;font:400 12px 'Space Grotesk';color:#6e6e72">Calculator</span>
+</div>
+<div style="height:1px;background:rgba(0,0,0,.08)"></div>
+<div style="display:flex;align-items:baseline;gap:14px;padding:22px 18px 18px"><span style="font:500 40px/1 'Space Grotesk';letter-spacing:-.02em">1280</span><span style="font:400 13px 'Space Grotesk';color:#6e6e72;white-space:nowrap">Press <span style="font:500 10.5px 'IBM Plex Mono';border:1px solid rgba(0,0,0,.15);border-radius:4px;padding:1px 5px">↵</span> to copy</span></div>
+<div style="padding:0 8px 6px">
+<div style="padding:4px 10px 6px;font:500 11px 'Space Grotesk';letter-spacing:.08em;text-transform:uppercase;color:#6e6e72">Also</div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px"><div style="width:28px;height:28px;border-radius:7px;background:rgba(0,0,0,.06);display:grid;place-items:center;font:500 10px 'IBM Plex Mono';color:#1b1b1d">%</div><span style="font:500 14px 'Space Grotesk'">1920 is 150% of 1280</span></div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px"><div style="width:28px;height:28px;border-radius:7px;background:rgba(0,0,0,.06);display:grid;place-items:center;font:500 10px 'IBM Plex Mono';color:#1b1b1d">0x</div><span style="font:500 14px 'Space Grotesk'">0x500</span><span style="font:400 12px 'Space Grotesk';color:#6e6e72">hexadecimal</span></div>
+</div>
+<div style="display:flex;align-items:center;gap:16px;padding:10px 18px;border-top:1px solid rgba(0,0,0,.08);font:400 11.5px 'Space Grotesk';color:#6e6e72">
+<span style="display:flex;gap:6px;align-items:center;white-space:nowrap"><span style="font:500 10.5px 'IBM Plex Mono';border:1px solid rgba(0,0,0,.15);border-radius:4px;padding:1px 5px">↵</span>Copy result</span>
+<span style="margin-left:auto;font:500 12px 'Space Grotesk';color:#9a9a9e">revmo</span>
+</div>
+</div></div></div>
+
+<div class="dv-shot"><span class="dv-cap">actions on a result · dark</span><div class="dv-card" style="width:620px;height:400px;background:linear-gradient(160deg,#3a3d45 0%,#1d1f25 60%,#15161a 100%);display:flex;justify-content:center;padding-top:44px;box-sizing:border-box">
+<div style="position:relative;width:540px;height:fit-content;background:rgba(30,30,33,.78);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.1);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.45);color:#ececec">
+<div style="display:flex;align-items:center;gap:12px;padding:0 18px;height:58px">
+<span style="font:400 20px 'Space Grotesk';color:#ececec">invoice</span>
+<span style="margin-left:auto;font:400 12px 'Space Grotesk';color:#8a8a8f">3 results</span>
+</div>
+<div style="height:1px;background:rgba(255,255,255,.08)"></div>
+<div style="padding:10px 8px 6px;opacity:.55">
+<div style="padding:4px 10px 6px;font:500 11px 'Space Grotesk';letter-spacing:.08em;text-transform:uppercase;color:#8a8a8f">Files</div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.1);opacity:1"><div style="width:28px;height:28px;border-radius:7px;background:rgba(255,255,255,.08);display:grid;place-items:center;font:500 10px 'IBM Plex Mono';color:#bdbdc2">pdf</div><span style="font:500 14px 'Space Grotesk'"><span style="color:oklch(0.78 0.14 60)">invoice</span>-2026-09.pdf</span><span style="font:400 12px 'IBM Plex Mono';color:#8a8a8f">~/Documents/billing</span></div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px"><div style="width:28px;height:28px;border-radius:7px;background:rgba(255,255,255,.08);display:grid;place-items:center;font:500 10px 'IBM Plex Mono';color:#bdbdc2">pdf</div><span style="font:500 14px 'Space Grotesk'"><span style="color:oklch(0.78 0.14 60)">invoice</span>-2026-08.pdf</span><span style="font:400 12px 'IBM Plex Mono';color:#8a8a8f">~/Documents/billing</span></div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px"><div style="width:28px;height:28px;border-radius:7px;background:rgba(255,255,255,.08);display:grid;place-items:center;font:500 10px 'IBM Plex Mono';color:#bdbdc2">xlsx</div><span style="font:500 14px 'Space Grotesk'"><span style="color:oklch(0.78 0.14 60)">invoice</span>s-ledger.xlsx</span><span style="font:400 12px 'IBM Plex Mono';color:#8a8a8f">~/Documents</span></div>
+<div style="height:40px"></div>
+</div>
+<div style="display:flex;align-items:center;gap:16px;padding:10px 18px;border-top:1px solid rgba(255,255,255,.08);font:400 11.5px 'Space Grotesk';color:#8a8a8f"><span>invoice-2026-09.pdf</span><span style="margin-left:auto;font:500 12px 'Space Grotesk';color:#5e5e63">revmo</span></div>
+<div style="position:absolute;right:12px;bottom:46px;width:250px;background:rgba(42,42,46,.96);border:1px solid rgba(255,255,255,.12);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,.5);padding:6px;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;padding:7px 10px;border-radius:7px;background:oklch(0.78 0.14 60);color:#1b1206;font:500 13px 'Space Grotesk'">Open<span style="margin-left:auto;font:500 10.5px 'IBM Plex Mono'">↵</span></div>
+<div style="display:flex;align-items:center;padding:7px 10px;border-radius:7px;font:500 13px 'Space Grotesk'">Reveal in folder<span style="margin-left:auto;font:500 10.5px 'IBM Plex Mono';color:#8a8a8f">⌘↵</span></div>
+<div style="display:flex;align-items:center;padding:7px 10px;border-radius:7px;font:500 13px 'Space Grotesk'">Open with…<span style="margin-left:auto;font:500 10.5px 'IBM Plex Mono';color:#8a8a8f">⌘O</span></div>
+<div style="display:flex;align-items:center;padding:7px 10px;border-radius:7px;font:500 13px 'Space Grotesk'">Copy path<span style="margin-left:auto;font:500 10.5px 'IBM Plex Mono';color:#8a8a8f">⌘C</span></div>
+<div style="height:1px;background:rgba(255,255,255,.08);margin:4px 6px"></div>
+<div style="display:flex;align-items:center;padding:7px 10px;border-radius:7px;font:500 13px 'Space Grotesk';color:#e07b6a">Move to trash<span style="margin-left:auto;font:500 10.5px 'IBM Plex Mono';color:#8a8a8f">⌘⌫</span></div>
+</div>
+</div></div></div>
+
+<div class="dv-shot"><span class="dv-cap">onboarding · step 1 of 3</span><div class="dv-card" style="width:620px;height:400px;background:linear-gradient(160deg,#3a3d45 0%,#1d1f25 60%,#15161a 100%);display:flex;justify-content:center;align-items:center;box-sizing:border-box">
+<div style="width:460px;background:rgba(30,30,33,.85);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.1);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.45);color:#ececec;padding:32px 32px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;gap:6px"><span style="width:20px;height:3px;border-radius:2px;background:oklch(0.78 0.14 60)"></span><span style="width:20px;height:3px;border-radius:2px;background:rgba(255,255,255,.15)"></span><span style="width:20px;height:3px;border-radius:2px;background:rgba(255,255,255,.15)"></span></div>
+<div><div style="font:500 22px/1.2 'Space Grotesk';letter-spacing:-.01em">Choose your hotkey</div><div style="font:400 13.5px/1.5 'Space Grotesk';color:#9a9a9e;margin-top:6px">Press the combination you want to summon revmo with. You can change it later in Settings.</div></div>
+<div style="display:flex;align-items:center;justify-content:center;gap:10px;height:84px;border:1.5px dashed rgba(255,255,255,.2);border-radius:12px;background:rgba(255,255,255,.03)">
+<span style="font:500 18px 'IBM Plex Mono';padding:8px 14px;border-radius:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14)">Alt</span><span style="color:#8a8a8f">+</span><span style="font:500 18px 'IBM Plex Mono';padding:8px 14px;border-radius:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14)">Space</span>
+</div>
+<div style="display:flex;align-items:center;gap:12px"><span style="font:400 12px 'Space Grotesk';color:#8a8a8f">Default is Alt + Space</span><span style="margin-left:auto;font:500 13px 'Space Grotesk';color:#9a9a9e;padding:8px 14px">Skip</span><span style="font:500 13px 'Space Grotesk';color:#1b1206;background:oklch(0.78 0.14 60);padding:8px 16px;border-radius:8px">Continue</span></div>
+</div></div></div>
+
+</div></div>
+
+<!-- ===================== 1b ===================== -->
+
+<div class="dv-opt" id="1c"><div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Editorial — two panes, big type, detail always visible</div>
+<div class="dv-row">
+
+<div class="dv-shot"><span class="dv-cap">empty state · dark</span><div class="dv-card" style="width:760px;height:440px;background:linear-gradient(160deg,#3a3d45 0%,#1d1f25 60%,#15161a 100%);display:flex;justify-content:center;padding-top:40px;box-sizing:border-box">
+<div style="width:680px;height:fit-content;background:#19191b;border:1px solid rgba(255,255,255,.08);border-radius:12px;box-shadow:0 30px 70px rgba(0,0,0,.5);color:#ececec;overflow:hidden">
+<div style="padding:26px 28px 18px;display:flex;align-items:baseline;gap:14px"><span style="font:600 30px/1 'Space Grotesk';letter-spacing:-.025em;color:#55555a">What do you want to do?</span><span style="display:inline-block;width:3px;height:28px;background:oklch(0.78 0.14 60);align-self:center"></span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid rgba(255,255,255,.08)">
+<div style="padding:18px 28px;border-right:1px solid rgba(255,255,255,.08)"><div style="font:500 11px 'IBM Plex Mono';color:#8a8a8f;letter-spacing:.06em;margin-bottom:12px">RECENT</div>
+<div style="display:flex;flex-direction:column;gap:10px;font:500 15px 'Space Grotesk'"><span style="display:flex;gap:12px"><span style="font:400 11px 'IBM Plex Mono';color:oklch(0.78 0.14 60);width:16px">1</span>Firefox</span><span style="display:flex;gap:12px"><span style="font:400 11px 'IBM Plex Mono';color:oklch(0.78 0.14 60);width:16px">2</span>Code</span><span style="display:flex;gap:12px"><span style="font:400 11px 'IBM Plex Mono';color:oklch(0.78 0.14 60);width:16px">3</span>Obsidian</span><span style="display:flex;gap:12px"><span style="font:400 11px 'IBM Plex Mono';color:oklch(0.78 0.14 60);width:16px">4</span>Terminal</span></div></div>
+<div style="padding:18px 28px;border-right:1px solid rgba(255,255,255,.08)"><div style="font:500 11px 'IBM Plex Mono';color:#8a8a8f;letter-spacing:.06em;margin-bottom:12px">CLIPBOARD</div>
+<div style="display:flex;flex-direction:column;gap:10px;font:400 13px/1.3 'Space Grotesk';color:#bdbdc2"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">firewall-cmd --reload</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">https://github.com/revmo/revmo</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Meeting moved to 3pm, same room</span></div></div>
+<div style="padding:18px 28px"><div style="font:500 11px 'IBM Plex Mono';color:#8a8a8f;letter-spacing:.06em;margin-bottom:12px">TRY</div>
+<div style="display:flex;flex-direction:column;gap:10px;font:400 13px 'Space Grotesk';color:#bdbdc2"><span><span style="font:400 12px 'IBM Plex Mono';color:#ececec">= 44*12</span> to calculate</span><span><span style="font:400 12px 'IBM Plex Mono';color:#ececec">&gt; htop</span> to run a command</span><span><span style="font:400 12px 'IBM Plex Mono';color:#ececec">lock</span> to lock the screen</span></div></div>
+</div>
+<div style="display:flex;align-items:center;padding:12px 28px;border-top:1px solid rgba(255,255,255,.08);font:400 12px 'Space Grotesk';color:#8a8a8f"><span>Type to search apps, files, windows and more</span><span style="margin-left:auto;font:600 13px 'Space Grotesk';color:#ececec;letter-spacing:-.01em">revmo<span style="color:oklch(0.78 0.14 60)">.</span></span></div>
+</div></div></div>
+
+<div class="dv-shot"><span class="dv-cap">results + detail · dark</span><div class="dv-card" style="width:760px;height:440px;background:linear-gradient(160deg,#3a3d45 0%,#1d1f25 60%,#15161a 100%);display:flex;justify-content:center;padding-top:40px;box-sizing:border-box">
+<div style="width:680px;height:fit-content;background:#19191b;border:1px solid rgba(255,255,255,.08);border-radius:12px;box-shadow:0 30px 70px rgba(0,0,0,.5);color:#ececec;overflow:hidden">
+<div style="padding:26px 28px 18px;display:flex;align-items:center;gap:2px"><span style="font:600 30px/1 'Space Grotesk';letter-spacing:-.025em">fire</span><span style="display:inline-block;width:3px;height:28px;background:oklch(0.78 0.14 60)"></span><span style="margin-left:auto;font:400 12px 'IBM Plex Mono';color:#8a8a8f">7 results</span></div>
+<div style="display:grid;grid-template-columns:300px 1fr;border-top:1px solid rgba(255,255,255,.08)">
+<div style="padding:10px 0;border-right:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:14px;padding:9px 28px;color:oklch(0.78 0.14 60)"><span style="font:400 11px 'IBM Plex Mono';width:16px">01</span><span style="font:500 16px 'Space Grotesk'">Firefox</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';opacity:.7">app</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:9px 28px"><span style="font:400 11px 'IBM Plex Mono';width:16px;color:#55555a">02</span><span style="font:500 16px 'Space Grotesk'">Firefox Developer</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#8a8a8f">app</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:9px 28px"><span style="font:400 11px 'IBM Plex Mono';width:16px;color:#55555a">03</span><span style="font:500 16px 'Space Grotesk'">GitHub · Firefox</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#8a8a8f">window</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:9px 28px"><span style="font:400 11px 'IBM Plex Mono';width:16px;color:#55555a">04</span><span style="font:500 16px 'Space Grotesk'">firewall-notes.md</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#8a8a8f">file</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:9px 28px"><span style="font:400 11px 'IBM Plex Mono';width:16px;color:#55555a">05</span><span style="font:500 16px 'Space Grotesk'">fire-and-forget.sh</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#8a8a8f">file</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:9px 28px"><span style="font:400 11px 'IBM Plex Mono';width:16px;color:#55555a">06</span><span style="font:500 16px 'Space Grotesk';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">firewall-cmd --reload</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#8a8a8f">clip</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:9px 28px"><span style="font:400 11px 'IBM Plex Mono';width:16px;color:#55555a">07</span><span style="font:500 16px 'Space Grotesk'">Restart firewalld</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#8a8a8f">system</span></div>
+</div>
+<div style="padding:22px 28px 18px;display:flex;flex-direction:column;gap:18px">
+<div style="display:flex;gap:16px;align-items:center"><div style="width:56px;height:56px;border-radius:14px;background:#4a5f8a;display:grid;place-items:center;font:600 24px 'Space Grotesk';color:#fff">F</div><div><div style="font:600 22px/1.1 'Space Grotesk';letter-spacing:-.02em">Firefox</div><div style="font:400 12.5px 'Space Grotesk';color:#8a8a8f;margin-top:4px">Web browser · opened 14 times this week</div></div></div>
+<div style="font:400 11.5px/1.7 'IBM Plex Mono';color:#8a8a8f">/usr/bin/firefox<br>v131.0 · 2 windows open</div>
+<div style="display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,.08)">
+<div style="display:flex;align-items:center;padding:9px 0;font:500 14px 'Space Grotesk';border-bottom:1px solid rgba(255,255,255,.08)"><span>Open</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:oklch(0.78 0.14 60)">↵</span></div>
+<div style="display:flex;align-items:center;padding:9px 0;font:500 14px 'Space Grotesk';border-bottom:1px solid rgba(255,255,255,.08)"><span>New private window</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#8a8a8f">⇧↵</span></div>
+<div style="display:flex;align-items:center;padding:9px 0;font:500 14px 'Space Grotesk';border-bottom:1px solid rgba(255,255,255,.08)"><span>Focus existing window</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#8a8a8f">⌘↵</span></div>
+<div style="display:flex;align-items:center;padding:9px 0;font:500 14px 'Space Grotesk'"><span>Quit</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#8a8a8f">⌘Q</span></div>
+</div>
+</div>
+</div>
+</div></div></div>
+
+<div class="dv-shot"><span class="dv-cap">results + detail · light</span><div class="dv-card" style="width:760px;height:440px;background:linear-gradient(160deg,#dcd9d2 0%,#c7c3ba 60%,#b4b0a6 100%);display:flex;justify-content:center;padding-top:40px;box-sizing:border-box">
+<div style="width:680px;height:fit-content;background:#faf9f6;border:1px solid rgba(0,0,0,.08);border-radius:12px;box-shadow:0 30px 70px rgba(40,35,25,.3);color:#1b1b1d;overflow:hidden">
+<div style="padding:26px 28px 18px;display:flex;align-items:center;gap:2px"><span style="font:600 30px/1 'Space Grotesk';letter-spacing:-.025em">invoice</span><span style="display:inline-block;width:3px;height:28px;background:oklch(0.6 0.14 60)"></span><span style="margin-left:auto;font:400 12px 'IBM Plex Mono';color:#6e6e72">3 results</span></div>
+<div style="display:grid;grid-template-columns:300px 1fr;border-top:1px solid rgba(0,0,0,.08)">
+<div style="padding:10px 0;border-right:1px solid rgba(0,0,0,.08);display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:14px;padding:9px 28px;color:oklch(0.55 0.14 60)"><span style="font:400 11px 'IBM Plex Mono';width:16px">01</span><span style="font:500 16px 'Space Grotesk'">invoice-2026-09.pdf</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';opacity:.7">file</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:9px 28px"><span style="font:400 11px 'IBM Plex Mono';width:16px;color:#a5a5a8">02</span><span style="font:500 16px 'Space Grotesk'">invoice-2026-08.pdf</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#6e6e72">file</span></div>
+<div style="display:flex;align-items:center;gap:14px;padding:9px 28px"><span style="font:400 11px 'IBM Plex Mono';width:16px;color:#a5a5a8">03</span><span style="font:500 16px 'Space Grotesk'">invoices-ledger.xlsx</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#6e6e72">file</span></div>
+<div style="height:150px"></div>
+</div>
+<div style="padding:22px 28px 18px;display:flex;flex-direction:column;gap:18px">
+<div style="display:flex;gap:16px;align-items:center"><div style="width:56px;height:56px;border-radius:14px;background:rgba(0,0,0,.06);display:grid;place-items:center;font:500 13px 'IBM Plex Mono';color:#1b1b1d">pdf</div><div><div style="font:600 22px/1.1 'Space Grotesk';letter-spacing:-.02em">invoice-2026-09</div><div style="font:400 12.5px 'Space Grotesk';color:#6e6e72;margin-top:4px">PDF · 248 KB · modified 2 days ago</div></div></div>
+<div style="font:400 11.5px/1.7 'IBM Plex Mono';color:#6e6e72">~/Documents/billing/invoice-2026-09.pdf</div>
+<div style="display:flex;flex-direction:column;border-top:1px solid rgba(0,0,0,.08)">
+<div style="display:flex;align-items:center;padding:9px 0;font:500 14px 'Space Grotesk';border-bottom:1px solid rgba(0,0,0,.08)"><span>Open</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:oklch(0.55 0.14 60)">↵</span></div>
+<div style="display:flex;align-items:center;padding:9px 0;font:500 14px 'Space Grotesk';border-bottom:1px solid rgba(0,0,0,.08)"><span>Reveal in folder</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#6e6e72">⌘↵</span></div>
+<div style="display:flex;align-items:center;padding:9px 0;font:500 14px 'Space Grotesk';border-bottom:1px solid rgba(0,0,0,.08)"><span>Copy path</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#6e6e72">⌘C</span></div>
+<div style="display:flex;align-items:center;padding:9px 0;font:500 14px 'Space Grotesk';color:#b8463a"><span>Move to trash</span><span style="margin-left:auto;font:400 11px 'IBM Plex Mono';color:#6e6e72">⌘⌫</span></div>
+</div>
+</div>
+</div>
+</div></div></div>
+
+<div class="dv-shot"><span class="dv-cap">onboarding · step 1 of 3</span><div class="dv-card" style="width:760px;height:440px;background:#19191b;display:grid;grid-template-columns:1fr 1fr;color:#ececec;box-sizing:border-box">
+<div style="padding:40px 44px;display:flex;flex-direction:column;justify-content:space-between;border-right:1px solid rgba(255,255,255,.08)">
+<div style="font:600 64px/1 'Space Grotesk';letter-spacing:-.04em">revmo<span style="color:oklch(0.78 0.14 60)">.</span></div>
+<div style="display:flex;flex-direction:column;gap:14px;font:500 15px 'Space Grotesk'">
+<span style="display:flex;gap:14px;align-items:center"><span style="font:400 11px 'IBM Plex Mono';color:oklch(0.78 0.14 60)">01</span>Hotkey</span>
+<span style="display:flex;gap:14px;align-items:center;color:#55555a"><span style="font:400 11px 'IBM Plex Mono'">02</span>Sources</span>
+<span style="display:flex;gap:14px;align-items:center;color:#55555a"><span style="font:400 11px 'IBM Plex Mono'">03</span>Theme</span>
+</div>
+</div>
+<div style="padding:40px 44px;display:flex;flex-direction:column;gap:22px">
+<div><div style="font:600 26px/1.15 'Space Grotesk';letter-spacing:-.02em">Press the keys that bring revmo up.</div><div style="font:400 13.5px/1.5 'Space Grotesk';color:#9a9a9e;margin-top:8px">Anywhere, over any window.</div></div>
+<div style="display:flex;align-items:center;gap:10px;padding:26px 0;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08)"><span style="font:500 22px 'IBM Plex Mono';padding:8px 16px;border:1px solid rgba(255,255,255,.18);border-radius:6px">Alt</span><span style="font:400 18px 'Space Grotesk';color:#55555a">+</span><span style="font:500 22px 'IBM Plex Mono';padding:8px 16px;border:1px solid rgba(255,255,255,.18);border-radius:6px">Space</span></div>
+<div style="display:flex;align-items:center;gap:14px;margin-top:auto"><span style="font:600 14px 'Space Grotesk';color:#1b1206;background:oklch(0.78 0.14 60);padding:11px 20px;border-radius:6px">Continue</span><span style="font:500 13px 'Space Grotesk';color:#9a9a9e">Skip setup</span></div>
+</div>
+</div></div>
+
+</div></div>
+
+
+</div>
+</section>
+</x-dc>
+</body>
+</html>

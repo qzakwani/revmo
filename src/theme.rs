@@ -1,136 +1,561 @@
-use iced::Theme;
-use std::sync::LazyLock;
+//! Color themes. Two are built in; the rest are `.theme` files the user
+//! (or the installer) puts in a `revmo/themes` folder:
+//!
+//! ```text
+//! [Theme]
+//! Name=Dracula
+//! Background=#282a36
+//! Text=#f8f8f2
+//! Accent=#bd93f9
+//! ```
+//!
+//! Background, Text and Accent are required; every other color (see
+//! [`KEYS`]) is optional and worked out from those three when missing.
 
-pub static THEMES: LazyLock<[Theme; 44]> = LazyLock::new(|| {
+use std::fs;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::path::{Path, PathBuf};
+
+use iced::theme::Palette;
+use iced::theme::palette::is_dark;
+use iced::{Color, Theme};
+use rkyv::{Archive, Deserialize, Serialize};
+
+use crate::{HOME_DIR, store};
+use revmo::xdg::base_dirs::{config_home, data_dirs};
+use revmo::xdg::keyfile::KeyFile;
+
+pub const DEFAULT: &str = "Revmo Dark";
+const GROUP: &str = "Theme";
+const EXTENSION: &str = "theme";
+
+/// Every color the UI draws with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Colors {
+    pub background: Color,
+    /// Footer and input fields.
+    pub raised: Color,
+    /// The highlighted row while the actions pane is open.
+    pub selected_soft: Color,
+    /// The window's outer border.
+    pub frame: Color,
+    /// Dividers between sections.
+    pub border: Color,
+    pub border_strong: Color,
+    pub text: Color,
+    pub text_dim: Color,
+    pub text_muted: Color,
+    pub text_faint: Color,
+    /// The prompt, matched letters and keys.
+    pub accent: Color,
+    pub on_accent: Color,
+    /// The selected row.
+    pub selection: Color,
+    pub on_selection: Color,
+    pub danger: Color,
+    pub success: Color,
+    /// Matched letters in results.
+    pub highlight: Color,
+}
+
+/// The file keys, in the order of [`Colors::to_array`].
+pub const KEYS: [&str; 17] = [
+    "Background",
+    "Raised",
+    "SelectedSoft",
+    "Frame",
+    "Border",
+    "BorderStrong",
+    "Text",
+    "TextDim",
+    "TextMuted",
+    "TextFaint",
+    "Accent",
+    "OnAccent",
+    "Selection",
+    "OnSelection",
+    "Danger",
+    "Success",
+    "Highlight",
+];
+
+impl Colors {
+    fn to_array(self) -> [Color; 17] {
+        [
+            self.background,
+            self.raised,
+            self.selected_soft,
+            self.frame,
+            self.border,
+            self.border_strong,
+            self.text,
+            self.text_dim,
+            self.text_muted,
+            self.text_faint,
+            self.accent,
+            self.on_accent,
+            self.selection,
+            self.on_selection,
+            self.danger,
+            self.success,
+            self.highlight,
+        ]
+    }
+
+    fn from_array(c: [Color; 17]) -> Self {
+        Colors {
+            background: c[0],
+            raised: c[1],
+            selected_soft: c[2],
+            frame: c[3],
+            border: c[4],
+            border_strong: c[5],
+            text: c[6],
+            text_dim: c[7],
+            text_muted: c[8],
+            text_faint: c[9],
+            accent: c[10],
+            on_accent: c[11],
+            selection: c[12],
+            on_selection: c[13],
+            danger: c[14],
+            success: c[15],
+            highlight: c[16],
+        }
+    }
+
+    /// The full set from the three required colors, with any of the others
+    /// that `given` provides (looked up by file key).
+    fn derive(
+        background: Color,
+        text: Color,
+        accent: Color,
+        given: impl Fn(&str) -> Option<Color>,
+    ) -> Self {
+        let get = |key: &str, default: Color| given(key).unwrap_or(default);
+        let shade = |factor: f32| blend(background, text, factor);
+        let dark = is_dark(background);
+        let border = get("Border", shade(0.14));
+        let selection = get("Selection", accent);
+        Colors {
+            background,
+            raised: get("Raised", shade(0.03)),
+            selected_soft: get("SelectedSoft", shade(0.07)),
+            frame: get("Frame", border),
+            border,
+            border_strong: get("BorderStrong", shade(0.21)),
+            text,
+            text_dim: get("TextDim", shade(0.7)),
+            text_muted: get("TextMuted", shade(0.52)),
+            text_faint: get("TextFaint", shade(0.36)),
+            accent,
+            on_accent: get("OnAccent", readable_on(accent, background, text)),
+            selection,
+            on_selection: get("OnSelection", readable_on(selection, background, text)),
+            danger: get("Danger", if dark { rgb(0xe07b6a) } else { rgb(0xb8463a) }),
+            success: get("Success", if dark { rgb(0x8fbf6a) } else { rgb(0x4d7c2f) }),
+            highlight: get("Highlight", accent),
+        }
+    }
+}
+
+/// A named set of colors, as cached.
+#[derive(Archive, Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ThemeDef {
+    pub name: String,
+    /// [`Colors`] as RGBA, in [`KEYS`] order.
+    rgba: [u32; 17],
+}
+
+impl ThemeDef {
+    pub fn new(name: String, colors: Colors) -> Self {
+        ThemeDef {
+            name,
+            rgba: colors
+                .to_array()
+                .map(|c| u32::from_be_bytes(c.into_rgba8())),
+        }
+    }
+
+    pub fn colors(&self) -> Colors {
+        Colors::from_array(self.rgba.map(|c| {
+            let [r, g, b, a] = c.to_be_bytes();
+            Color::from_rgba8(r, g, b, f32::from(a) / 255.0)
+        }))
+    }
+
+    /// The iced theme with the same colors, for widgets' default styles.
+    pub fn to_iced(&self) -> Theme {
+        let c = self.colors();
+        Theme::custom(
+            self.name.clone(),
+            Palette {
+                background: c.background,
+                text: c.text,
+                primary: c.accent,
+                success: c.success,
+                warning: c.accent,
+                danger: c.danger,
+            },
+        )
+    }
+}
+
+/// The themes that need no files.
+pub fn built_in() -> [ThemeDef; 2] {
     [
-        Theme::Light,
-        Theme::custom("Nude Light".to_string(), Theme::Light.palette()),
-        Theme::Dark,
-        Theme::custom("Nude Dark".to_string(), Theme::Dark.palette()),
-        Theme::Dracula,
-        Theme::custom("Nude Dracula".to_string(), Theme::Dracula.palette()),
-        Theme::Nord,
-        Theme::custom("Nude Nord".to_string(), Theme::Nord.palette()),
-        Theme::SolarizedLight,
-        Theme::custom(
-            "Nude Solarized Light".to_string(),
-            Theme::SolarizedLight.palette(),
+        ThemeDef::new(
+            DEFAULT.into(),
+            Colors {
+                background: rgb(0x0f1012),
+                raised: rgb(0x141518),
+                selected_soft: rgb(0x1e2024),
+                frame: rgb(0x2c2e33),
+                border: rgb(0x2c2e33),
+                border_strong: rgb(0x3a3c42),
+                text: rgb(0xd9d9dc),
+                text_dim: rgb(0x9a9a9e),
+                text_muted: rgb(0x6a6b70),
+                text_faint: rgb(0x4a4c52),
+                accent: rgb(0xf8a052),
+                on_accent: rgb(0x1b1206),
+                selection: rgb(0xf8a052),
+                on_selection: rgb(0x1b1206),
+                danger: rgb(0xe07b6a),
+                success: rgb(0x8fbf6a),
+                highlight: rgb(0xf8a052),
+            },
         ),
-        Theme::SolarizedDark,
-        Theme::custom(
-            "Nude Solarized Dark".to_string(),
-            Theme::SolarizedDark.palette(),
+        ThemeDef::new(
+            "Revmo Light".into(),
+            Colors {
+                background: rgb(0xf7f6f2),
+                raised: rgb(0xedebe5),
+                selected_soft: rgb(0xe6e3db),
+                frame: rgb(0xc9c6bd),
+                border: rgb(0xe2e0d8),
+                border_strong: rgb(0xc9c6bd),
+                text: rgb(0x1b1b1d),
+                text_dim: rgb(0x48484c),
+                text_muted: rgb(0x6e6e72),
+                text_faint: rgb(0x9a9a9e),
+                accent: rgb(0xab5900),
+                on_accent: rgb(0xf7f6f2),
+                selection: rgb(0xf8a052),
+                on_selection: rgb(0x1b1206),
+                danger: rgb(0xb8463a),
+                success: rgb(0x4d7c2f),
+                highlight: rgb(0xf8a052),
+            },
         ),
-        Theme::GruvboxLight,
-        Theme::custom(
-            "Nude Gruvbox Light".to_string(),
-            Theme::GruvboxLight.palette(),
-        ),
-        Theme::GruvboxDark,
-        Theme::custom(
-            "Nude Gruvbox Dark".to_string(),
-            Theme::GruvboxDark.palette(),
-        ),
-        Theme::CatppuccinLatte,
-        Theme::custom(
-            "Nude Catppuccin Latte".to_string(),
-            Theme::CatppuccinLatte.palette(),
-        ),
-        Theme::CatppuccinFrappe,
-        Theme::custom(
-            "Nude Catppuccin Frappe".to_string(),
-            Theme::CatppuccinFrappe.palette(),
-        ),
-        Theme::CatppuccinMacchiato,
-        Theme::custom(
-            "Nude Catppuccin Macchiato".to_string(),
-            Theme::CatppuccinMacchiato.palette(),
-        ),
-        Theme::CatppuccinMocha,
-        Theme::custom(
-            "Nude Catppuccin Mocha".to_string(),
-            Theme::CatppuccinMocha.palette(),
-        ),
-        Theme::TokyoNight,
-        Theme::custom("Nude Tokyo Night".to_string(), Theme::TokyoNight.palette()),
-        Theme::TokyoNightStorm,
-        Theme::custom(
-            "Nude Tokyo Night Storm".to_string(),
-            Theme::TokyoNightStorm.palette(),
-        ),
-        Theme::TokyoNightLight,
-        Theme::custom(
-            "Nude Tokyo Night Light".to_string(),
-            Theme::TokyoNightLight.palette(),
-        ),
-        Theme::KanagawaWave,
-        Theme::custom(
-            "Nude Kanagawa Wave".to_string(),
-            Theme::KanagawaWave.palette(),
-        ),
-        Theme::KanagawaDragon,
-        Theme::custom(
-            "Nude Kanagawa Dragon".to_string(),
-            Theme::KanagawaDragon.palette(),
-        ),
-        Theme::KanagawaLotus,
-        Theme::custom(
-            "Nude Kanagawa Lotus".to_string(),
-            Theme::KanagawaLotus.palette(),
-        ),
-        Theme::Moonfly,
-        Theme::custom("Nude Moonfly".to_string(), Theme::Moonfly.palette()),
-        Theme::Nightfly,
-        Theme::custom("Nude Nightfly".to_string(), Theme::Nightfly.palette()),
-        Theme::Oxocarbon,
-        Theme::custom("Nude Oxocarbon".to_string(), Theme::Oxocarbon.palette()),
-        Theme::Ferra,
-        Theme::custom("Nude Ferra".to_string(), Theme::Ferra.palette()),
     ]
-});
-
-pub fn default_theme() -> &'static Theme {
-    &THEMES[0]
 }
 
-/// The theme with the given name, or the default one.
-pub fn by_name(name: &str) -> &'static Theme {
-    THEMES
-        .iter()
-        .find(|t| t.to_string() == name)
-        .unwrap_or_else(default_theme)
+/// The built-in themes followed by `files`, skipping any file theme named
+/// like a built-in one.
+pub fn with_built_in(files: Vec<ThemeDef>) -> Vec<ThemeDef> {
+    let mut all = built_in().to_vec();
+    let files: Vec<ThemeDef> = files
+        .into_iter()
+        .filter(|f| !all.iter().any(|b| b.name == f.name))
+        .collect();
+    all.extend(files);
+    all
 }
 
-fn position(current: &Theme) -> usize {
-    let name = current.to_string();
-    THEMES
-        .iter()
-        .position(|t| t.to_string() == name)
-        .unwrap_or(0)
+/// The theme called `name`, if there is one.
+pub fn by_name<'a>(themes: &'a [ThemeDef], name: &str) -> Option<&'a ThemeDef> {
+    themes.iter().find(|t| t.name == name)
 }
 
-pub fn next(current: &Theme) -> &'static Theme {
-    &THEMES[(position(current) + 1) % THEMES.len()]
+fn position(themes: &[ThemeDef], current: &str) -> usize {
+    themes.iter().position(|t| t.name == current).unwrap_or(0)
 }
 
-pub fn previous(current: &Theme) -> &'static Theme {
-    &THEMES[(position(current) + THEMES.len() - 1) % THEMES.len()]
+pub fn next<'a>(themes: &'a [ThemeDef], current: &str) -> &'a ThemeDef {
+    &themes[(position(themes, current) + 1) % themes.len()]
+}
+
+pub fn previous<'a>(themes: &'a [ThemeDef], current: &str) -> &'a ThemeDef {
+    &themes[(position(themes, current) + themes.len() - 1) % themes.len()]
+}
+
+/// The theme files' themes from the last scan and the fingerprint they were
+/// scanned with, without checking that they're still current.
+pub fn cached() -> Option<(u64, Vec<ThemeDef>)> {
+    store::get_themes()
+}
+
+/// A fresh scan if the theme files changed since `fingerprint` (or there is
+/// none), else `None`. Blocks on file IO.
+pub fn scan_if_changed(fingerprint: Option<u64>) -> Option<Vec<ThemeDef>> {
+    let dirs = dirs(Path::new(HOME_DIR.as_str()));
+    let current = self::fingerprint(&dirs);
+    (fingerprint != Some(current)).then(|| scan_and_store(&dirs, current))
+}
+
+/// A fresh scan, whether or not anything changed. Blocks on file IO.
+pub fn rescan() -> Vec<ThemeDef> {
+    let dirs = dirs(Path::new(HOME_DIR.as_str()));
+    let current = fingerprint(&dirs);
+    scan_and_store(&dirs, current)
+}
+
+/// Scans with the fingerprint taken before scanning, so a file changed
+/// mid-scan triggers another scan next time.
+fn scan_and_store(dirs: &[PathBuf], fingerprint: u64) -> Vec<ThemeDef> {
+    let themes = scan(dirs);
+    store::store_themes(fingerprint, &themes);
+    themes
+}
+
+/// Folders holding `.theme` files, highest priority first: the user's own
+/// in `$XDG_CONFIG_HOME`, then the installed ones in the data dirs.
+pub fn dirs(home: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![config_home(home).join("revmo/themes")];
+    dirs.extend(data_dirs(home).into_iter().map(|d| d.join("revmo/themes")));
+    dirs
+}
+
+/// The `.theme` files directly inside `dir`, sorted by name.
+fn files_in(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == EXTENSION))
+        .collect();
+    files.sort();
+    files
+}
+
+/// Changes whenever a theme file is added, removed or edited.
+pub fn fingerprint(dirs: &[PathBuf]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    for dir in dirs {
+        dir.hash(&mut hasher);
+        for file in files_in(dir) {
+            file.hash(&mut hasher);
+            fs::metadata(&file)
+                .and_then(|m| m.modified())
+                .ok()
+                .hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
+/// Reads every theme file in `dirs`, sorted by name. When two files share a
+/// name, the one in the earlier folder wins. Blocks on file IO.
+pub fn scan(dirs: &[PathBuf]) -> Vec<ThemeDef> {
+    let mut themes: Vec<ThemeDef> = Vec::new();
+    for path in dirs.iter().flat_map(|d| files_in(d)) {
+        let Ok(contents) = fs::read_to_string(&path) else {
+            eprintln!("Error: can't read {}", path.display());
+            continue;
+        };
+        let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+        match parse(&contents, &stem) {
+            Ok(theme) if !themes.iter().any(|t| t.name == theme.name) => themes.push(theme),
+            Ok(_) => {}
+            Err(e) => eprintln!("Error: skipping theme {}: {e}", path.display()),
+        }
+    }
+    themes.sort_by_cached_key(|t| t.name.to_lowercase());
+    themes
+}
+
+/// A theme file's contents; `fallback_name` is used when it has no `Name`.
+pub fn parse(contents: &str, fallback_name: &str) -> Result<ThemeDef, String> {
+    let file = KeyFile::parse(contents);
+    let group = file
+        .group(GROUP)
+        .ok_or_else(|| format!("no [{GROUP}] group"))?;
+    for key in KEYS {
+        if let Some(value) = group.raw(key)
+            && parse_color(value).is_none()
+        {
+            return Err(format!("{key}={value} is not a #rrggbb color"));
+        }
+    }
+    let given = |key: &str| group.raw(key).and_then(parse_color);
+    let required = |key: &str| given(key).ok_or_else(|| format!("{key} is missing"));
+    let colors = Colors::derive(
+        required("Background")?,
+        required("Text")?,
+        required("Accent")?,
+        given,
+    );
+    // Trimmed, as the config's Theme= is, so names always match.
+    let name = group
+        .string("Name")
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| fallback_name.trim().to_string());
+    Ok(ThemeDef::new(name, colors))
+}
+
+/// `#rrggbb` or `#rrggbbaa`.
+fn parse_color(value: &str) -> Option<Color> {
+    let hex = value.trim().strip_prefix('#')?;
+    if !matches!(hex.len(), 6 | 8) || !hex.is_ascii() {
+        return None;
+    }
+    let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
+    let alpha = if hex.len() == 8 { byte(6)? } else { 255 };
+    Some(Color::from_rgba8(
+        byte(0)?,
+        byte(2)?,
+        byte(4)?,
+        f32::from(alpha) / 255.0,
+    ))
+}
+
+const fn rgb(hex: u32) -> Color {
+    Color::from_rgb8((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
+}
+
+/// Mixes in sRGB, so the factor matches how far between the two colors
+/// the result looks.
+fn blend(a: Color, b: Color, factor: f32) -> Color {
+    let lerp = |x: f32, y: f32| x + (y - x) * factor;
+    Color::from_rgb(lerp(a.r, b.r), lerp(a.g, b.g), lerp(a.b, b.b))
+}
+
+/// Text for `fill`: the theme's background or text color, whichever reads
+/// better, or black or white if neither reaches 4.5:1.
+fn readable_on(fill: Color, background: Color, text: Color) -> Color {
+    let best = |a: Color, b: Color| {
+        if fill.relative_contrast(a) >= fill.relative_contrast(b) {
+            a
+        } else {
+            b
+        }
+    };
+    let color = best(background, text);
+    if fill.relative_contrast(color) >= 4.5 {
+        color
+    } else {
+        best(Color::BLACK, Color::WHITE)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn themes() -> Vec<ThemeDef> {
+        with_built_in(vec![
+            parse(
+                "[Theme]\nName=B\nBackground=#000000\nText=#ffffff\nAccent=#ff0000",
+                "b",
+            )
+            .unwrap(),
+        ])
+    }
+
     #[test]
     fn cycles_by_name() {
-        let first = default_theme();
-        let last = &THEMES[THEMES.len() - 1];
-        assert_eq!(next(last).to_string(), first.to_string());
-        assert_eq!(previous(first).to_string(), last.to_string());
-        assert_eq!(
-            by_name(&THEMES[3].to_string()).to_string(),
-            THEMES[3].to_string()
+        let themes = themes();
+        assert_eq!(next(&themes, "B").name, DEFAULT);
+        assert_eq!(previous(&themes, DEFAULT).name, "B");
+        assert_eq!(next(&themes, "No Such Theme").name, "Revmo Light");
+        assert!(by_name(&themes, "B").is_some());
+        assert!(by_name(&themes, "No Such Theme").is_none());
+    }
+
+    #[test]
+    fn parses_and_derives() {
+        let theme = parse(
+            "[Theme]\nBackground=#0f1012\nText=#d9d9dc\nAccent=#f0a940\nDanger=#ff000080",
+            "mine",
+        )
+        .unwrap();
+        assert_eq!(theme.name, "mine");
+        let c = theme.colors();
+        assert_eq!(c.background, rgb(0x0f1012));
+        assert_eq!(c.selection, c.accent);
+        assert_eq!(c.danger.into_rgba8(), [255, 0, 0, 128]);
+        // Derived shades sit between the background and the text.
+        assert!(c.border.relative_contrast(c.background) > 1.0);
+        assert!(
+            c.text_muted.relative_contrast(c.background) < c.text.relative_contrast(c.background)
         );
-        assert_eq!(by_name("No Such Theme").to_string(), first.to_string());
+    }
+
+    #[test]
+    fn rejects_bad_files() {
+        assert!(parse("[Theme]\nBackground=#000000\nText=#ffffff", "x").is_err());
+        assert!(
+            parse(
+                "[Theme]\nBackground=#000\nText=#ffffff\nAccent=#ff0000",
+                "x"
+            )
+            .is_err()
+        );
+        let bad_optional = "[Theme]\nBackground=#000000\nText=#ffffff\nAccent=#ff0000\nBorder=red";
+        assert!(parse(bad_optional, "x").is_err());
+        assert!(parse("Background=#000000", "x").is_err());
+    }
+
+    #[test]
+    fn first_folder_wins_and_built_ins_stay() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (user, installed) = (tmp.path().join("user"), tmp.path().join("installed"));
+        fs::create_dir_all(&user).unwrap();
+        fs::create_dir_all(&installed).unwrap();
+        let theme = |accent: &str| {
+            format!("[Theme]\nName=X\nBackground=#000000\nText=#ffffff\nAccent={accent}")
+        };
+        fs::write(user.join("x.theme"), theme("#ff0000")).unwrap();
+        fs::write(installed.join("x.theme"), theme("#00ff00")).unwrap();
+        fs::write(
+            installed.join("dark.theme"),
+            "[Theme]\nName=Revmo Dark\nBackground=#000000\nText=#ffffff\nAccent=#00ff00",
+        )
+        .unwrap();
+        fs::write(installed.join("broken.theme"), "garbage").unwrap();
+        fs::write(installed.join("notes.txt"), theme("#0000ff")).unwrap();
+
+        let dirs = [user, installed];
+        let before = fingerprint(&dirs);
+        let scanned = scan(&dirs);
+        assert_eq!(scanned.len(), 2);
+        let x = by_name(&scanned, "X").unwrap();
+        assert_eq!(x.colors().accent, rgb(0xff0000));
+
+        let all = with_built_in(scanned);
+        assert_eq!(all.len(), 3);
+        assert_eq!(by_name(&all, DEFAULT).unwrap(), &built_in()[0]);
+
+        fs::remove_file(dirs[0].join("x.theme")).unwrap();
+        assert_ne!(fingerprint(&dirs), before);
+    }
+
+    #[test]
+    fn shipped_themes_are_readable() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("themes");
+        let files = files_in(&dir);
+        assert!(!files.is_empty());
+        let mut all = built_in().to_vec();
+        for file in files {
+            let contents = fs::read_to_string(&file).unwrap();
+            all.push(parse(&contents, "").unwrap_or_else(|e| panic!("{}: {e}", file.display())));
+        }
+        for theme in all {
+            let c = theme.colors();
+            // Text on the fills revmo picks it for: WCAG AA for normal text,
+            // and for large or bold text on the accent. Background and text
+            // are the theme's.
+            for (fill, text, min) in [
+                (c.selection, c.on_selection, 4.5),
+                (c.accent, c.on_accent, 3.0),
+            ] {
+                let contrast = fill.relative_contrast(text);
+                assert!(contrast >= min, "{}: contrast {contrast}", theme.name);
+            }
+        }
     }
 }
