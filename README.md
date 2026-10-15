@@ -40,10 +40,12 @@ Before you install, make sure your system meets the following requirements:
 To install Revmo, simply run the following curl command:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/qzakwani/revmo/refs/heads/master/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/qzakwani/revmo/refs/heads/main/scripts/install.sh | sh
 ```
 
 💥 **Boom!** Revmo will automatically download and install itself—no extra steps required!
+
+To update Revmo, run the same command again: it installs the latest release over the old one and keeps your settings, themes and history.
 
 ### **2. Running Revmo**
 
@@ -168,7 +170,7 @@ With these simple tweaks, you can elevate your productivity and enjoy the full p
 If you ever need to remove **Revmo**, the process is just as simple as installing it. Run the following command in your terminal:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/qzakwani/revmo/refs/heads/master/scripts/uninstall.sh | sh
+curl -fsSL https://raw.githubusercontent.com/qzakwani/revmo/refs/heads/main/scripts/uninstall.sh | sh
 ```
 
 🧹 **Clean Exit**: This will completely remove Revmo from your system, leaving no traces behind.
