@@ -19,13 +19,14 @@ DATA_HOME=$(xdg_dir "${XDG_DATA_HOME:-}" "$HOME/.local/share")
 ICON_DIR="$DATA_HOME/icons"
 DESKTOP_FILE_DIR="$DATA_HOME/applications"
 
-# Settings, launch history and cache.
+# The user's settings and themes.
 CONFIG_DIR="$(xdg_dir "${XDG_CONFIG_HOME:-}" "$HOME/.config")/$APP_NAME"
-STATE_DIR="$(xdg_dir "${XDG_STATE_HOME:-}" "$HOME/.local/state")/$APP_NAME"
-# Also holds the socket when $XDG_RUNTIME_DIR isn't set.
-CACHE_DIR="$(xdg_dir "${XDG_CACHE_HOME:-}" "$HOME/.cache")/$APP_NAME"
-# The installed themes and version (versions before 1.1 kept other data here).
-DATA_DIR="$DATA_HOME/$APP_NAME"
+# Revmo's own files: installed themes, history, caches, and the socket
+# when $XDG_RUNTIME_DIR isn't set.
+APP_DIR="$DATA_HOME/$APP_NAME"
+# Where pre-release 1.1 builds kept history and caches.
+OLD_STATE_DIR="$(xdg_dir "${XDG_STATE_HOME:-}" "$HOME/.local/state")/$APP_NAME"
+OLD_CACHE_DIR="$(xdg_dir "${XDG_CACHE_HOME:-}" "$HOME/.cache")/$APP_NAME"
 
 yellow() { printf '\033[0;33m%s\033[0m\n' "$*"; }
 
@@ -51,7 +52,10 @@ remove_file "$ICON_DIR/$ICON"
 remove_file "$DESKTOP_FILE_DIR/$APP_NAME.desktop"
 
 echo "Removing settings, themes, history and cache..."
-rm -rf "$CONFIG_DIR" "$STATE_DIR" "$CACHE_DIR" "$DATA_DIR"
+rm -rf "$CONFIG_DIR" "$APP_DIR" "$OLD_STATE_DIR" "$OLD_CACHE_DIR"
+# 1.0 used these whatever the XDG variables said.
+rm -f "$HOME/.config/$APP_NAME/revmo.conf" "$HOME/.local/share/$APP_NAME/apps.store"
+rmdir "$HOME/.config/$APP_NAME" "$HOME/.local/share/$APP_NAME" 2>/dev/null
 case "${XDG_RUNTIME_DIR:-}" in
     /*) rm -f "$XDG_RUNTIME_DIR/$APP_NAME.sock" ;;
 esac

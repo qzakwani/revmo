@@ -130,14 +130,9 @@ pub fn config_home(home: &Path) -> PathBuf {
     env_dir("XDG_CONFIG_HOME", home, ".config")
 }
 
-/// `$XDG_STATE_HOME`, defaulting to `~/.local/state`.
-pub fn state_home(home: &Path) -> PathBuf {
-    env_dir("XDG_STATE_HOME", home, ".local/state")
-}
-
-/// `$XDG_CACHE_HOME`, defaulting to `~/.cache`.
-pub fn cache_home(home: &Path) -> PathBuf {
-    env_dir("XDG_CACHE_HOME", home, ".cache")
+/// `$XDG_DATA_HOME`, defaulting to `~/.local/share`.
+pub fn data_home(home: &Path) -> PathBuf {
+    env_dir("XDG_DATA_HOME", home, ".local/share")
 }
 
 fn env_dir(var: &str, home: &Path, default: &str) -> PathBuf {

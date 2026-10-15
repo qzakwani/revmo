@@ -13,8 +13,8 @@ pub enum Instance {
     Secondary,
 }
 
-/// `$XDG_RUNTIME_DIR/revmo.sock`, or a file in the cache dir when there is
-/// no runtime dir.
+/// `$XDG_RUNTIME_DIR/revmo.sock`, or a file in `fallback_dir` when there
+/// is no runtime dir.
 pub fn socket_path(fallback_dir: &Path) -> PathBuf {
     env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)

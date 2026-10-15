@@ -71,7 +71,7 @@ impl Config {
     /// The settings from the config file over the defaults. A missing file
     /// just means defaults.
     pub fn load() -> Loaded {
-        load_from(&CONFIG_DIR.join("config"), &CONFIG_DIR.join("revmo.conf"))
+        load_from(&CONFIG_DIR.join("config"))
     }
 }
 
@@ -166,7 +166,7 @@ fn with_theme(text: &str, theme: &str) -> String {
     out
 }
 
-fn load_from(path: &Path, legacy: &Path) -> Loaded {
+fn load_from(path: &Path) -> Loaded {
     match fs::read(path) {
         Ok(bytes) => match String::from_utf8(bytes) {
             Ok(text) => parse(&text),
@@ -181,26 +181,7 @@ fn load_from(path: &Path, legacy: &Path) -> Loaded {
                 loaded
             }
         },
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            // Versions before 1.1 kept the theme in another file; carry it
-            // over once.
-            let Some(config) = migrate_legacy(legacy) else {
-                // Unusable leftovers: nothing to carry over.
-                let _ = fs::remove_file(legacy);
-                return Loaded::default();
-            };
-            // Only dropped once carried over.
-            match save_theme_to(path, &config.theme) {
-                Ok(()) => {
-                    let _ = fs::remove_file(legacy);
-                }
-                Err(e) => eprintln!("revmo: can't save {}: {e}", path.display()),
-            }
-            Loaded {
-                config,
-                ..Loaded::default()
-            }
-        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Loaded::default(),
         Err(e) => Loaded {
             problems: vec![format!("can't read {}: {e}", path.display())],
             unsaveable: Some("it can't be read".into()),
@@ -237,7 +218,7 @@ fn parse(text: &str) -> Loaded {
 
     let mut config = Config::default();
     if let Some(theme) = group.string("Theme").filter(|t| !t.trim().is_empty()) {
-        config.theme = renamed_theme(theme.trim());
+        config.theme = theme.trim().to_string();
     }
     config.font = group.string("Font").unwrap_or_default().trim().to_string();
     if let Some(value) = group.string("Scale") {
@@ -356,55 +337,6 @@ fn parse_scale(value: &str) -> (Option<f32>, Option<String>) {
 
 const MIN_SCALE: f32 = 0.5;
 const MAX_SCALE: f32 = 4.0;
-
-/// The themes of earlier versions, in their cycling order. Each also had
-/// a "Nude" variant right after it, with the same colors.
-const OLD_THEMES: [&str; 22] = [
-    "Light",
-    "Dark",
-    "Dracula",
-    "Nord",
-    "Solarized Light",
-    "Solarized Dark",
-    "Gruvbox Light",
-    "Gruvbox Dark",
-    "Catppuccin Latte",
-    "Catppuccin Frappé",
-    "Catppuccin Macchiato",
-    "Catppuccin Mocha",
-    "Tokyo Night",
-    "Tokyo Night Storm",
-    "Tokyo Night Light",
-    "Kanagawa Wave",
-    "Kanagawa Dragon",
-    "Kanagawa Lotus",
-    "Moonfly",
-    "Nightfly",
-    "Oxocarbon",
-    "Ferra",
-];
-
-/// The "Nude" themes of earlier versions are now the plain theme with
-/// the same colors.
-fn renamed_theme(name: &str) -> String {
-    match name.strip_prefix("Nude ") {
-        Some("Catppuccin Frappe") => "Catppuccin Frappé".to_string(),
-        Some(plain) if OLD_THEMES.contains(&plain) => plain.to_string(),
-        _ => name.to_string(),
-    }
-}
-
-/// Earlier versions stored a theme index in `revmo.conf`, bincode-encoded:
-/// a little-endian u64.
-fn migrate_legacy(path: &Path) -> Option<Config> {
-    let bytes = fs::read(path).ok()?;
-    let index = u64::from_le_bytes(bytes.get(..8)?.try_into().ok()?);
-    let theme = OLD_THEMES.get(usize::try_from(index).ok()? / 2)?;
-    Some(Config {
-        theme: theme.to_string(),
-        ..Config::default()
-    })
-}
 
 #[cfg(test)]
 mod tests {
@@ -579,81 +511,30 @@ mod tests {
     #[test]
     fn unreadable_files_are_reported_and_not_saved_over() {
         let tmp = tempfile::tempdir().unwrap();
-        let (path, legacy) = (tmp.path().join("config"), tmp.path().join("revmo.conf"));
+        let path = tmp.path().join("config");
         // Missing: defaults, nothing created.
-        assert_eq!(load_from(&path, &legacy), Loaded::default());
+        assert_eq!(load_from(&path), Loaded::default());
         assert!(!path.exists());
 
         fs::write(&path, b"[Revmo]\nTheme=Nord\nFont=Caf\xe9\n").unwrap();
-        let loaded = load_from(&path, &legacy);
+        let loaded = load_from(&path);
         assert_eq!(loaded.config.theme, "Nord");
         assert!(loaded.unsaveable.is_some());
         assert!(loaded.problems[0].contains("UTF-8"));
 
         fs::remove_file(&path).unwrap();
         fs::create_dir(&path).unwrap();
-        let loaded = load_from(&path, &legacy);
+        let loaded = load_from(&path);
         assert_eq!(loaded.config, Config::default());
         assert!(loaded.problems[0].starts_with("can't read"));
         assert!(loaded.unsaveable.is_some());
     }
 
     #[test]
-    fn renames_nude_themes() {
-        assert_eq!(config("[Revmo]\nTheme=Nude Dracula\n").theme, "Dracula");
-        assert_eq!(
-            config("[Revmo]\nTheme=Nude Catppuccin Frappe\n").theme,
-            "Catppuccin Frappé"
-        );
-    }
-
-    #[test]
-    fn migrates_theme_index() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("revmo.conf");
-        fs::write(&path, 4u64.to_le_bytes()).unwrap();
-        let config = migrate_legacy(&path).unwrap();
-        // Index 4 was Dracula, 5 its Nude variant.
-        assert_eq!(config.theme, "Dracula");
-        fs::write(&path, 5u64.to_le_bytes()).unwrap();
-        assert_eq!(migrate_legacy(&path).unwrap().theme, "Dracula");
-        fs::write(&path, 9999u64.to_le_bytes()).unwrap();
-        assert_eq!(migrate_legacy(&path), None);
-    }
-
-    #[test]
-    fn carries_the_old_theme_over_once() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (path, legacy) = (tmp.path().join("config"), tmp.path().join("revmo.conf"));
-        fs::write(&legacy, 4u64.to_le_bytes()).unwrap();
-        assert_eq!(load_from(&path, &legacy).config.theme, "Dracula");
-        assert_eq!(
-            fs::read_to_string(&path).unwrap(),
-            "[Revmo]\nTheme=Dracula\n"
-        );
-        assert!(!legacy.exists());
-
-        // If the new file can't be written (here a link into a missing
-        // folder), the old one is kept for next time.
-        let link = tmp.path().join("link");
-        std::os::unix::fs::symlink(tmp.path().join("missing/config"), &link).unwrap();
-        fs::write(&legacy, 4u64.to_le_bytes()).unwrap();
-        let loaded = load_from(&link, &legacy);
-        assert_eq!(loaded.config.theme, "Dracula");
-        assert!(legacy.exists());
-    }
-
-    #[test]
     fn theme_names_survive_saving() {
-        for name in [
-            "Nude Mine",
-            "Revmo Dark",
-            "Tokyo Night",
-            "Catppuccin Frappé",
-        ] {
+        for name in ["Revmo Dark", "Tokyo Night", "Catppuccin Frappé"] {
             assert_eq!(config(&with_theme("", name)).theme, name);
         }
-        assert_eq!(config("[Revmo]\nTheme=Nude Nightfly\n").theme, "Nightfly");
     }
 
     #[test]

@@ -19,17 +19,25 @@ xdg_dir() {
 BIN_DIR="$HOME/.local/bin"
 DATA_HOME=$(xdg_dir "${XDG_DATA_HOME:-}" "$HOME/.local/share")
 CONFIG_HOME=$(xdg_dir "${XDG_CONFIG_HOME:-}" "$HOME/.config")
+STATE_HOME=$(xdg_dir "${XDG_STATE_HOME:-}" "$HOME/.local/state")
+CACHE_HOME=$(xdg_dir "${XDG_CACHE_HOME:-}" "$HOME/.cache")
 ICON_DIR="$DATA_HOME/icons"
 DESKTOP_FILE_DIR="$DATA_HOME/applications"
-# Color themes that come with revmo; users add their own to
-# ~/.config/revmo/themes, which this never touches.
-THEME_DIR="$DATA_HOME/$APP_NAME/themes"
+# Revmo keeps two folders: CONFIG_DIR is the user's (config and their own
+# themes), never touched here except for a first config; APP_DIR is
+# revmo's (installed themes, history, caches).
+CONFIG_DIR="$CONFIG_HOME/$APP_NAME"
+APP_DIR="$DATA_HOME/$APP_NAME"
+THEME_DIR="$APP_DIR/themes"
 # The release installed last, to tell an update from a reinstall.
-VERSION_FILE="$DATA_HOME/$APP_NAME/version"
-CONFIG_FILE="$CONFIG_HOME/$APP_NAME/config"
-# Where versions before 1.1 kept the theme; revmo carries it over into
-# CONFIG_FILE the first time it starts, if there's no CONFIG_FILE yet.
-LEGACY_CONFIG="$CONFIG_HOME/$APP_NAME/revmo.conf"
+VERSION_FILE="$APP_DIR/version"
+CONFIG_FILE="$CONFIG_DIR/config"
+
+# The physical path of folder $1, symlinks and .. resolved; empty if it
+# doesn't exist.
+real_dir() {
+    (cd -P -- "$1" 2>/dev/null && pwd -P) || true
+}
 
 red() { printf '\033[1;31m%s\033[0m\n' "$*"; }
 yellow() { printf '\033[1;33m%s\033[0m\n' "$*"; }
@@ -112,6 +120,11 @@ if ! (cd "$TMP_DIR" && sha256sum -c --quiet SHA256SUMS); then
 fi
 
 echo "Installing..."
+# Closed so the old version can't write its files back after they're
+# cleaned up below; the next launch starts the new one.
+if pkill -u "$(id -u)" -x "$APP_NAME" 2>/dev/null; then
+    echo "Closed the running revmo."
+fi
 mkdir -p "$BIN_DIR" "$ICON_DIR" "$DESKTOP_FILE_DIR" "$(dirname "$THEME_DIR")"
 # Copied next to the old binary and renamed over it: the rename is atomic,
 # so a failed update never leaves a broken binary, and it works while
@@ -126,10 +139,29 @@ tar -xzf "$TMP_DIR/$THEMES" -C "$TMP_DIR/themes"
 rm -rf "$THEME_DIR"
 mv "$TMP_DIR/themes" "$THEME_DIR"
 
+# What earlier versions kept elsewhere is not carried over. 1.0 kept its
+# settings and app list under ~/.config and ~/.local/share whatever the
+# XDG variables said; their folders go too if that leaves them empty.
+rm -f "$CONFIG_DIR/revmo.conf" "$APP_DIR/apps.store" \
+    "$HOME/.config/$APP_NAME/revmo.conf" "$HOME/.local/share/$APP_NAME/apps.store"
+rmdir "$HOME/.config/$APP_NAME" "$HOME/.local/share/$APP_NAME" 2>/dev/null || true
+# Pre-release 1.1 builds kept history and caches in the state and cache
+# folders, unless the XDG variables make those one of the two folders
+# (compared after resolving symlinks, so differently written paths to the
+# same folder are caught).
+keep="$(real_dir "$APP_DIR")/:$(real_dir "$CONFIG_DIR")/"
+for old in "$STATE_HOME/$APP_NAME" "$CACHE_HOME/$APP_NAME"; do
+    real=$(real_dir "$old")
+    [ -n "$real" ] || continue
+    case "$keep" in
+        "$real/"* | *":$real/"*) ;;
+        *) rm -rf "$old" ;;
+    esac
+done
+
 # A starting config listing every setting, all commented out so the
-# defaults apply. Never replaces one the user already has, and isn't
-# written over an old one revmo still has to carry over.
-if [ ! -e "$CONFIG_FILE" ] && [ ! -e "$LEGACY_CONFIG" ]; then
+# defaults apply. Never replaces one the user already has.
+if [ ! -e "$CONFIG_FILE" ]; then
     mkdir -p "$(dirname "$CONFIG_FILE")"
     cat <<'EOF' > "$CONFIG_FILE"
 # Revmo settings. Every setting is optional: remove the # to use one.
@@ -181,9 +213,6 @@ esac
 
 echo ""
 green "Revmo $TAG has been installed successfully!"
-if pgrep -u "$(id -u)" -x "$APP_NAME" >/dev/null 2>&1; then
-    yellow "Revmo is open right now; the new version starts the next time you open it."
-fi
 echo ""
 echo "You can now:"
 echo "1. Run it from a terminal with: $APP_NAME"
