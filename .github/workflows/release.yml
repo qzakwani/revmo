@@ -1,25 +1,83 @@
 name: Release
 
-# Push a tag like v1.1.0 to build the binary and publish a GitHub release
-# with the files scripts/install.sh downloads.
+# The version in Cargo.toml is what gets released: when a push to main
+# changes it to one that has no tag yet, this builds the binary, tags the
+# commit v<version> and publishes a GitHub release with the files
+# scripts/install.sh downloads. Edits to Cargo.toml that keep the version
+# release nothing.
+#
+# It can also be run by hand (Actions > Release > Run workflow), e.g. to
+# release the current version or to redo a failed release after deleting
+# its tag and release.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths: [Cargo.toml]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    # The oldest supported runner, so the binary links against an older
-    # glibc and runs on more distributions.
-    runs-on: ubuntu-22.04
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      released: ${{ steps.version.outputs.released }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Read the version from Cargo.toml
+        id: version
+        run: |
+          # Releases come from main only, even when run by hand.
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Releases are made from main, not $GITHUB_REF"
+            exit 1
+          fi
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Assigned first, so a failed check fails the step.
+          released=$(.github/released.sh "v$version")
+          echo "released=$released" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: version
+    if: needs.version.outputs.released == 'false'
+    # The oldest supported runner, so the binary links against an older
+    # glibc and runs on more distributions.
+    runs-on: ubuntu-22.04
+    # Runs releasing the same version wait for each other (the check below
+    # then skips the later ones); different versions don't block each other.
+    concurrency:
+      group: release-${{ needs.version.outputs.version }}
+      cancel-in-progress: false
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      # Another run may have released it while this one waited.
+      - name: Check it's still unreleased
+        id: check
+        run: |
+          released=$(.github/released.sh "v$VERSION")
+          echo "released=$released" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.check.outputs.released == 'false'
       - run: cargo test --locked
+        if: steps.check.outputs.released == 'false'
       - run: cargo build --release --locked
+        if: steps.check.outputs.released == 'false'
+      - name: Check the binary reports the version
+        if: steps.check.outputs.released == 'false'
+        run: |
+          reported=$(target/release/revmo --version)
+          if [ "$reported" != "revmo $VERSION" ]; then
+            echo "::error::The binary says \"$reported\", expected \"revmo $VERSION\""
+            exit 1
+          fi
       - name: Collect release files
+        if: steps.check.outputs.released == 'false'
         run: |
           mkdir dist
           cp target/release/revmo dist/revmo
@@ -27,5 +85,11 @@ jobs:
           tar -czf dist/revmo-themes.tar.gz -C themes .
           cd dist && sha256sum revmo revmo.png revmo-themes.tar.gz > SHA256SUMS
       - uses: softprops/action-gh-release@v2
+        if: steps.check.outputs.released == 'false'
         with:
+          tag_name: v${{ env.VERSION }}
+          name: v${{ env.VERSION }}
+          # Tag the commit that was built, even if main has moved on.
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
           files: dist/*
