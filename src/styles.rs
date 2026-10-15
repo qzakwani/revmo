@@ -1,8 +1,10 @@
 //! Sizes, fonts and widget styles. Colors come from the theme
 //! ([`Colors`]), so every style takes them.
 
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
+use iced::advanced::graphics::text::cosmic_text::fontdb::{FaceInfo, Source};
 use iced::font::Weight;
 use iced::widget::{Rule, Space, button, container, row, rule, scrollable, text, text_input};
 use iced::{Alignment, Background, Border, Color, Element, Fill, Font, Padding, border};
@@ -59,18 +61,56 @@ pub const BUNDLED_FONTS: [&[u8]; 3] = [
     include_bytes!("../fonts/IBMPlexMono-SemiBold.ttf"),
 ];
 
-/// The installed font family called `family` (ignoring case), spelled as
-/// installed, or `None` if there's no such font.
+/// The installed font family called `family` (ignoring case), or `None` if
+/// there's no such font. A font can have several names (e.g. one per
+/// language); this gives the one [`installed_families`] lists it under.
 pub fn installed_family(family: &str) -> Option<String> {
+    let family = family.trim();
+    with_installed_faces(|faces| {
+        faces
+            .filter(|face| {
+                face.families
+                    .iter()
+                    .any(|(name, _)| name.eq_ignore_ascii_case(family))
+            })
+            .find_map(|face| face.families.first().map(|(name, _)| name.clone()))
+    })
+}
+
+/// Every installed font family (not the bundled one), sorted ignoring
+/// case, with whether any of its faces is monospaced.
+pub fn installed_families() -> Vec<(String, bool)> {
+    let mut families: BTreeMap<String, (String, bool)> = BTreeMap::new();
+    with_installed_faces(|faces| {
+        for face in faces {
+            // The first name is the English one, if the font has it.
+            let Some((name, _)) = face.families.first() else {
+                continue;
+            };
+            if name.eq_ignore_ascii_case(BUNDLED_FAMILY) {
+                continue;
+            }
+            let family = families
+                .entry(name.to_lowercase())
+                .or_insert_with(|| (name.clone(), false));
+            family.1 |= face.monospaced;
+        }
+    });
+    families.into_values().collect()
+}
+
+/// Calls `f` with the system's font faces, leaving out the fonts built
+/// into iced.
+fn with_installed_faces<T>(f: impl FnOnce(&mut dyn Iterator<Item = &FaceInfo>) -> T) -> T {
     let mut system = iced::advanced::graphics::text::font_system()
         .write()
         .unwrap_or_else(|e| e.into_inner());
-    system.raw().db().faces().find_map(|face| {
-        face.families
-            .iter()
-            .find(|(name, _)| name.eq_ignore_ascii_case(family.trim()))
-            .map(|(name, _)| name.clone())
-    })
+    let mut faces = system
+        .raw()
+        .db()
+        .faces()
+        .filter(|face| !matches!(face.source, Source::Binary(_)));
+    f(&mut faces)
 }
 
 /// Sets the font for this run: `family`, or the bundled one if it's empty.
