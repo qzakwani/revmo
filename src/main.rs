@@ -1,6 +1,7 @@
 mod actions_pane;
 mod args_page;
 mod batch;
+mod cli;
 mod config;
 mod help_page;
 mod helpers;
@@ -64,6 +65,22 @@ static INSTANCE_SOCKET: std::sync::Mutex<Option<std::os::unix::net::UnixListener
     std::sync::Mutex::new(None);
 
 fn main() -> iced::Result {
+    let args = env::args_os()
+        .skip(1)
+        .map(|a| a.to_string_lossy().into_owned());
+    match cli::parse(args) {
+        Ok(cli::Command::Open) => {}
+        // Before the instance check, so a running launcher stays open.
+        Ok(command) => {
+            cli::run(command);
+            return Ok(());
+        }
+        Err(e) => {
+            eprintln!("revmo: {e}\nRun `revmo --help` to see the commands.");
+            std::process::exit(2);
+        }
+    }
+
     let cache_dir =
         xdg::base_dirs::cache_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo");
     match instance::acquire(&instance::socket_path(&cache_dir)) {

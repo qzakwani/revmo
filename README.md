@@ -101,7 +101,7 @@ To make the most out of **Revmo**, consider these tips:
   If a line has a mistake (an unknown setting, a theme or font that isn't installed, a scale that isn't a number), Revmo uses the default for that setting and shows the problem when it opens; `Ctrl + H` lists them all. If Revmo can't read or understand the file at all, it leaves it untouched and won't save theme changes to it.
 
 - **Pick Your Font and Size**  
-  Revmo comes with IBM Plex Mono. To use another installed font, set `Font=` in the config file to its family name (e.g. `Font=JetBrains Mono`).
+  Revmo comes with IBM Plex Mono. To use another installed font, set `Font=` in the config file to its family name (e.g. `Font=JetBrains Mono`). Run `revmo list-fonts` to see the names you can use; fonts marked `mono` (monospaced) suit Revmo's look best.
 
   If Revmo looks too small or too large, set `Scale=` in the config file (e.g. `Scale=1.5`); it scales the window and text together. Left empty, Revmo picks a scale from your monitor's size on X11 (a 27" 4K screen at 96 dpi gets 1.5, sized by the primary monitor) and follows the desktop's scaling on Wayland. If the automatic scale is wrong, for example with several monitors, set `Scale=` yourself. The help page (`Ctrl + H`) shows the scale in use. Font and scale changes apply the next time Revmo opens.
 
@@ -117,13 +117,18 @@ To make the most out of **Revmo**, consider these tips:
   Each app has one row. Press `→` to open its actions pane: open it, or use one of its actions (e.g. *New Private Window*). Entries that accept files or URLs show `→ file`/`→ url`; press `→` on one to type the files to open with it, and wrap names containing spaces in quotes when giving several.
 
 - **Clean Up Your App List**  
-  To keep apps out of Revmo, list their desktop file IDs in the config file, separated by `;`:
+  To keep apps out of Revmo, list their IDs in the config file, separated by `;`. Run `revmo list-apps` to see every app and action with its ID on the right:
+
+  ```console
+  $ revmo list-apps | grep -i logs
+  Logs                  org.gnome.Logs.desktop
+  ```
 
   ```ini
   Hidden=org.gnome.Logs.desktop;nm-connection-editor.desktop;
   ```
 
-  The ID is the `.desktop` file's name (e.g. `/usr/share/applications/org.gnome.Logs.desktop` → `org.gnome.Logs.desktop`). A hidden app's actions are hidden with it. To hide an app from every launcher, not just Revmo, copy its `.desktop` file to `~/.local/share/applications/` and add `NoDisplay=true`.
+  To hide only one action, use its ID (e.g. `firefox.desktop/new-private-window`). A hidden app's actions are hidden with it, and `revmo list-apps` marks what's hidden, so you can find what to remove to bring an app back. To hide an app from every launcher, not just Revmo, copy its `.desktop` file to `~/.local/share/applications/` and add `NoDisplay=true`.
 
 - **Keyboard Shortcuts**
 
@@ -138,6 +143,16 @@ To make the most out of **Revmo**, consider these tips:
   | `Ctrl + R` | Reload the config file and rescan themes and apps (history is kept) |
   | `Ctrl + H` | Help |
   | `Esc` | Back, or close |
+
+- **Command Line**
+
+  | Command | What it does |
+  |---|---|
+  | `revmo` | Open Revmo (or close it if it's open) |
+  | `revmo list-apps` | List apps and their actions, with the IDs `Hidden=` takes |
+  | `revmo list-fonts` | List installed font families, as `Font=` takes them |
+  | `revmo --help` | Show the commands |
+  | `revmo --version` | Show the version |
 
 - **Where Revmo Keeps Its Files**
   - `~/.config/revmo/config`: theme, font, scale and hidden apps (written by you; Revmo only updates `Theme=`)
