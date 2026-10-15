@@ -39,9 +39,12 @@ const LIST_HEIGHT: f32 = BATCH_SIZE as f32 * styles::ROW_HEIGHT + 2.0 * styles::
 const WINDOW_HEIGHT: f32 =
     styles::INPUT_HEIGHT + 1.0 + LIST_HEIGHT + 1.0 + styles::FOOTER_HEIGHT + 2.0;
 
-static USAGE_FILE: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
-    xdg::base_dirs::state_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo/usage")
+/// Everything revmo keeps for itself: the installed themes, launch history
+/// and caches. What the user writes lives in `~/.config/revmo` instead.
+static APP_DIR: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
+    xdg::base_dirs::data_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo")
 });
+static USAGE_FILE: LazyLock<std::path::PathBuf> = LazyLock::new(|| APP_DIR.join("usage"));
 
 // How much launch history counts against match quality; a full-word match
 // is worth roughly 100.
@@ -81,9 +84,7 @@ fn main() -> iced::Result {
         }
     }
 
-    let cache_dir =
-        xdg::base_dirs::cache_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo");
-    match instance::acquire(&instance::socket_path(&cache_dir)) {
+    match instance::acquire(&instance::socket_path(&APP_DIR)) {
         Some(instance::Instance::Secondary) => return Ok(()),
         Some(instance::Instance::Primary(listener)) => {
             *INSTANCE_SOCKET.lock().unwrap() = Some(listener);

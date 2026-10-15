@@ -9,19 +9,16 @@ use rkyv::util::AlignedVec;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::theme::ThemeDef;
-use crate::{HOME_DIR, parser::App};
+use crate::{APP_DIR, parser::App};
 use revmo::files::write_atomic;
-use revmo::xdg::base_dirs::cache_home;
 
 // Bump when App or scanning changes, so old caches are rebuilt.
 const VERSION: u32 = 2;
 // Bump when ThemeDef or theme parsing changes.
 const THEMES_VERSION: u32 = 2;
 
-static CACHE_FILE: LazyLock<PathBuf> =
-    LazyLock::new(|| cache_home(Path::new(HOME_DIR.as_str())).join("revmo/apps"));
-static THEMES_FILE: LazyLock<PathBuf> =
-    LazyLock::new(|| cache_home(Path::new(HOME_DIR.as_str())).join("revmo/themes"));
+static CACHE_FILE: LazyLock<PathBuf> = LazyLock::new(|| APP_DIR.join("cache/apps"));
+static THEMES_FILE: LazyLock<PathBuf> = LazyLock::new(|| APP_DIR.join("cache/themes"));
 
 #[derive(Archive, Serialize, Deserialize)]
 struct Cache {

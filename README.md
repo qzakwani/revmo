@@ -45,7 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/qzakwani/revmo/refs/heads/main/scri
 
 💥 **Boom!** Revmo will automatically download and install itself—no extra steps required!
 
-To update Revmo, run the same command again: it installs the latest release over the old one and keeps your settings, themes and history.
+To update Revmo, run the same command again: it installs the latest release over the old one and keeps your config, your own themes and your history. (Updating from 1.0 starts fresh: its saved theme isn't carried over.)
 
 ### **2. Running Revmo**
 
@@ -157,11 +157,17 @@ To make the most out of **Revmo**, consider these tips:
   | `revmo --version` | Show the version |
 
 - **Where Revmo Keeps Its Files**
-  - `~/.config/revmo/config`: theme, font, scale and hidden apps (written by you; Revmo only updates `Theme=`)
-  - `~/.config/revmo/themes/`: your own themes
-  - `~/.local/share/revmo/themes/`: the themes installed with Revmo (replaced on update)
-  - `~/.local/state/revmo/usage`: launch history
-  - `~/.cache/revmo/apps`, `~/.cache/revmo/themes`: cached apps and themes, rebuilt automatically when they change
+
+  Two folders: one for you, one for Revmo.
+
+  - `~/.config/revmo/` is yours:
+    - `config`: theme, font, scale and hidden apps (written by you; Revmo only updates `Theme=`)
+    - `themes/`: your own themes
+  - `~/.local/share/revmo/` is Revmo's:
+    - `themes/`: the themes installed with Revmo (replaced on update)
+    - `usage`: launch history
+    - `cache/`: cached apps and themes, rebuilt automatically (safe to delete)
+    - `version`: the installed release
 
 With these simple tweaks, you can elevate your productivity and enjoy the full power of **Revmo**! 🚀
 
