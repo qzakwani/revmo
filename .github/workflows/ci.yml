@@ -1,9 +1,16 @@
 name: CI
 
+# Checks pull requests; merges to main are handled by release.yml.
+# Only changes that can affect the build need checking: the sources, the
+# manifest and lockfile, the fonts src/styles.rs embeds, and this workflow.
 on:
-  push:
-    branches: [main]
   pull_request:
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'fonts/**'
+      - '.github/workflows/ci.yml'
 
 jobs:
   check:
