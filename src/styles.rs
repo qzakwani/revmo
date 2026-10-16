@@ -6,7 +6,9 @@ use std::sync::OnceLock;
 
 use iced::advanced::graphics::text::cosmic_text::fontdb::{FaceInfo, Source};
 use iced::font::Weight;
-use iced::widget::{Rule, Space, button, container, row, rule, scrollable, text, text_input};
+use iced::widget::{
+    Rule, Space, button, container, rich_text, row, rule, scrollable, span, text, text_input,
+};
 use iced::{Alignment, Background, Border, Color, Element, Fill, Font, Padding, border};
 
 use crate::theme::Colors;
@@ -279,16 +281,24 @@ pub fn primary_button(c: Colors) -> button::Style {
     }
 }
 
-/// A footer bar: `left` items, then `right` pushed to the far side.
+/// A footer bar: `left` items separated by dots, then `right` pushed to the
+/// far side.
 pub fn footer_bar<'a, Message: 'a>(
     c: Colors,
     left: impl IntoIterator<Item = Element<'a, Message>>,
     right: Element<'a, Message>,
 ) -> Element<'a, Message> {
+    let mut items = row(Vec::<Element<'a, Message>>::new())
+        .spacing(8)
+        .align_y(Alignment::Center);
+    for (i, item) in left.into_iter().enumerate() {
+        if i > 0 {
+            items = items.push(small("·").color(c.text_faint));
+        }
+        items = items.push(item);
+    }
     container(
-        row(left)
-            .push(Space::new().width(Fill))
-            .push(right)
+        row([items.into(), Space::new().width(Fill).into(), right])
             .spacing(14)
             .align_y(Alignment::Center),
     )
@@ -297,6 +307,20 @@ pub fn footer_bar<'a, Message: 'a>(
     .width(Fill)
     .align_y(Alignment::Center)
     .style(move |_| footer(c))
+    .into()
+}
+
+/// A footer hint, "key what it does": the key in the text color so it
+/// stands apart from the muted words.
+pub fn hint<'a, Message: 'a>(c: Colors, hint: &'a str) -> Element<'a, Message> {
+    let (key, what) = hint.rsplit_once(' ').unwrap_or((hint, ""));
+    rich_text([
+        span::<(), _>(key).color(c.text),
+        span(" "),
+        span(what).color(c.text_muted),
+    ])
+    .size(SMALL_SIZE)
+    .font(fonts().regular)
     .into()
 }
 

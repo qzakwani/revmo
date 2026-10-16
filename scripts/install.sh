@@ -4,7 +4,6 @@ set -eu
 
 APP_NAME="revmo"
 ICON="revmo.png"
-THEMES="revmo-themes.tar.gz"
 REPO_URL="https://github.com/qzakwani/$APP_NAME"
 
 # $1 if it's an absolute path, else the default $2, as revmo itself
@@ -25,10 +24,9 @@ ICON_DIR="$DATA_HOME/icons"
 DESKTOP_FILE_DIR="$DATA_HOME/applications"
 # Revmo keeps two folders: CONFIG_DIR is the user's (config and their own
 # themes), never touched here except for a first config; APP_DIR is
-# revmo's (installed themes, history, caches).
+# revmo's (history, caches).
 CONFIG_DIR="$CONFIG_HOME/$APP_NAME"
 APP_DIR="$DATA_HOME/$APP_NAME"
-THEME_DIR="$APP_DIR/themes"
 # The release installed last, to tell an update from a reinstall.
 VERSION_FILE="$APP_DIR/version"
 CONFIG_FILE="$CONFIG_DIR/config"
@@ -50,7 +48,7 @@ if [ "$(uname -m)" != "x86_64" ] || [ "$(uname -s)" != "Linux" ]; then
     exit 1
 fi
 
-for tool in curl tar sha256sum; do
+for tool in curl sha256sum; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         red "$tool is needed to install revmo; please install it and try again."
         exit 1
@@ -108,7 +106,7 @@ download() {
 }
 
 echo "Downloading..."
-for file in "$APP_NAME" "$ICON" "$THEMES" SHA256SUMS; do
+for file in "$APP_NAME" "$ICON" SHA256SUMS; do
     if ! download "$file"; then
         red "Failed to download $file from revmo $TAG. Please check your internet connection and try again."
         exit 1
@@ -125,7 +123,7 @@ echo "Installing..."
 if pkill -u "$(id -u)" -x "$APP_NAME" 2>/dev/null; then
     echo "Closed the running revmo."
 fi
-mkdir -p "$BIN_DIR" "$ICON_DIR" "$DESKTOP_FILE_DIR" "$(dirname "$THEME_DIR")"
+mkdir -p "$BIN_DIR" "$ICON_DIR" "$DESKTOP_FILE_DIR" "$APP_DIR"
 # Copied next to the old binary and renamed over it: the rename is atomic,
 # so a failed update never leaves a broken binary, and it works while
 # revmo is running (writing into a running binary fails).
@@ -133,12 +131,12 @@ cp "$TMP_DIR/$APP_NAME" "$NEW_BIN"
 chmod +x "$NEW_BIN"
 mv -f "$NEW_BIN" "$BIN_DIR/$APP_NAME"
 mv -f "$TMP_DIR/$ICON" "$ICON_DIR/$ICON"
-# Replaced as a whole, so themes dropped from revmo go away too.
-mkdir -p "$TMP_DIR/themes"
-tar -xzf "$TMP_DIR/$THEMES" -C "$TMP_DIR/themes"
-rm -rf "$THEME_DIR"
-mv "$TMP_DIR/themes" "$THEME_DIR"
 
+# Up to 1.2, the bundled themes were installed as files; they're built in
+# now. Kept if the XDG variables make that the user's own themes folder.
+if [ "$(real_dir "$APP_DIR")" != "$(real_dir "$CONFIG_DIR")" ]; then
+    rm -rf "$APP_DIR/themes"
+fi
 # What earlier versions kept elsewhere is not carried over. 1.0 kept its
 # settings and app list under ~/.config and ~/.local/share whatever the
 # XDG variables said; their folders go too if that leaves them empty.

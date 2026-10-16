@@ -21,7 +21,7 @@ DESKTOP_FILE_DIR="$DATA_HOME/applications"
 
 # The user's settings and themes.
 CONFIG_DIR="$(xdg_dir "${XDG_CONFIG_HOME:-}" "$HOME/.config")/$APP_NAME"
-# Revmo's own files: installed themes, history, caches, and the socket
+# Revmo's own files: history, caches, themes installed up to 1.2, and the socket
 # when $XDG_RUNTIME_DIR isn't set.
 APP_DIR="$DATA_HOME/$APP_NAME"
 # Where pre-release 1.1 builds kept history and caches.

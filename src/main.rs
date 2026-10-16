@@ -1,6 +1,7 @@
 mod actions_pane;
 mod args_page;
 mod batch;
+mod bundled_themes;
 mod cli;
 mod config;
 mod help_page;
@@ -39,8 +40,7 @@ const LIST_HEIGHT: f32 = BATCH_SIZE as f32 * styles::ROW_HEIGHT + 2.0 * styles::
 const WINDOW_HEIGHT: f32 =
     styles::INPUT_HEIGHT + 1.0 + LIST_HEIGHT + 1.0 + styles::FOOTER_HEIGHT + 2.0;
 
-/// Everything revmo keeps for itself: the installed themes, launch history
-/// and caches. What the user writes lives in `~/.config/revmo` instead.
+/// Everything revmo keeps for itself: launch history and caches. What the user writes lives in `~/.config/revmo` instead.
 static APP_DIR: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
     xdg::base_dirs::data_home(std::path::Path::new(HOME_DIR.as_str())).join("revmo")
 });
@@ -146,15 +146,14 @@ struct Revmo {
     config: config::Config,
     /// What's wrong in the config file, one line each.
     config_problems: Vec<String>,
-    /// The startup problem with `Font=`, and the setting it was about.
-    font_problem: Option<(String, String)>,
     /// Whether this run's scale was picked from the monitor.
     scale_auto: bool,
-    /// Problems to show once the theme files are read.
-    pending_report: Option<Report>,
+    /// Whether to report problems once the theme files are read.
+    report_pending: bool,
     search: String,
     selected: usize,
-    /// Every theme: the built-in ones, then the theme files'.
+    /// Every theme: the built-in ones, then the bundled ones and the theme
+    /// files', by name.
     themes: Vec<ThemeDef>,
     theme: ThemeDef,
     colors: Colors,
@@ -186,18 +185,9 @@ struct Revmo {
     was_focused: bool,
 }
 
-/// When config problems are being reported.
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Report {
-    Startup,
-    /// Ctrl+R: says so even when all is well.
-    Reload,
-}
-
 #[derive(Clone, PartialEq)]
 enum ToastLevel {
     Error,
-    Success,
 }
 
 #[derive(Debug, Clone)]
@@ -220,7 +210,6 @@ enum Message {
     RunWithArgs(String, Vec<String>),
     RunPress(String),
     RunFailed,
-    Refresh,
     Exit,
     HelpPage,
     ToastDone(u64),
@@ -244,23 +233,19 @@ impl Revmo {
             // Few small files: read them now rather than flash another theme.
             None => (theme::rescan(), None),
         };
-        let font_problem = font_problem.map(|p| (loaded.config.font.trim().to_string(), p));
-        loaded
-            .problems
-            .extend(font_problem.as_ref().map(|(_, p)| p.clone()));
+        loaded.problems.extend(font_problem);
         let scale_auto = loaded.config.scale.is_none();
         let mut revmo = Revmo::_new(loaded, theme_files);
         revmo.scale = scale;
         revmo.scale_auto = scale_auto;
-        revmo.font_problem = font_problem;
         // The configured theme may be in files newer than the cache, so
         // report once those are checked.
         let themes_task = match scanning {
             Some(fingerprint) => {
-                revmo.pending_report = Some(Report::Startup);
+                revmo.report_pending = true;
                 scan_themes_if_changed(Some(fingerprint))
             }
-            None => revmo.report(Report::Startup),
+            None => revmo.report(),
         };
         let Some((fingerprint, apps)) = App::cached() else {
             // First run or unreadable cache: show "Loading" until scanned.
@@ -279,9 +264,8 @@ impl Revmo {
         let mut revmo = Self {
             config: loaded.config,
             config_problems: loaded.problems,
-            font_problem: None,
             scale_auto: true,
-            pending_report: None,
+            report_pending: false,
             search: String::new(),
             selected: 0,
             colors: theme.colors(),
@@ -354,15 +338,14 @@ impl Revmo {
         problems
     }
 
-    /// Toasts the first problem (the help page lists them all), or, after a
-    /// reload, that all went well.
-    fn report(&mut self, kind: Report) -> Task<Message> {
+    /// Toasts the first problem; the help page lists them all.
+    fn report(&mut self) -> Task<Message> {
         let problems = self.problems();
         for problem in &problems {
             eprintln!("revmo: config: {problem}");
         }
-        match (problems.first(), kind) {
-            (Some(first), _) => {
+        match problems.first() {
+            Some(first) => {
                 let more = match problems.len() {
                     1 => String::new(),
                     n => format!(" (+{} more, ctrl+h)", n - 1),
@@ -373,11 +356,7 @@ impl Revmo {
                     PROBLEM_TOAST_DURATION,
                 )
             }
-            (None, Report::Reload) => self.notify(
-                "Reloaded config, themes and apps.".into(),
-                ToastLevel::Success,
-            ),
-            (None, Report::Startup) => Task::none(),
+            None => Task::none(),
         }
     }
 
@@ -517,9 +496,9 @@ impl Revmo {
                     self.themes = theme::with_built_in(files);
                     self.apply_theme();
                 }
-                match self.pending_report.take() {
-                    Some(kind) => self.report(kind),
-                    None => Task::none(),
+                match std::mem::take(&mut self.report_pending) {
+                    true => self.report(),
+                    false => Task::none(),
                 }
             }
 
@@ -639,32 +618,6 @@ impl Revmo {
 
             Message::Junk(_) => Task::none(),
             Message::RunFailed => self.notify("Failed to launch app!".into(), ToastLevel::Error),
-
-            Message::Refresh => {
-                // Re-reads the config file (a new font or scale applies on
-                // next start) and rescans themes and apps; history stays.
-                // The result is reported once the themes are read.
-                let mut loaded = config::Config::load();
-                // The font list is from startup, so only the font this run
-                // was started with can be checked; a new one is checked
-                // when it takes effect, on next start.
-                if let Some((setting, problem)) = &self.font_problem
-                    && loaded.config.font.trim() == setting
-                {
-                    loaded.problems.push(problem.clone());
-                }
-                self.config = loaded.config;
-                self.config_problems = loaded.problems;
-                self.pending_report = Some(Report::Reload);
-                self.apply_theme();
-                self.search.clear();
-                self.visible.clear();
-                self.selected = 0;
-                self.pane = None;
-                self.close_args();
-                self.is_loading = true;
-                Task::batch([rescan_themes(), rescan()])
-            }
 
             Message::ForwardTheme => {
                 let name = theme::next(&self.themes, &self.theme.name).name.clone();
@@ -797,7 +750,7 @@ impl Revmo {
         if let Some((msg, level)) = &self.toast {
             return helpers::toast(msg, level, c);
         }
-        let hint = |s: &'static str| styles::small(s).color(c.text_muted).into();
+        let hint = |s| styles::hint(c, s);
         if self.args_key.is_some() {
             return styles::footer_bar(
                 c,
@@ -850,11 +803,6 @@ fn scan_if_changed(fingerprint: Option<u64>) -> Task<Message> {
     .and_then(|apps| Task::done(Message::AppsLoaded(apps)))
 }
 
-/// Rescans off the UI thread.
-fn rescan() -> Task<Message> {
-    Task::perform(helpers::on_thread(App::scan), Message::AppsLoaded)
-}
-
 /// Rereads the theme files off the UI thread if they changed since
 /// `fingerprint`.
 fn scan_themes_if_changed(fingerprint: Option<u64>) -> Task<Message> {
@@ -862,13 +810,6 @@ fn scan_themes_if_changed(fingerprint: Option<u64>) -> Task<Message> {
         helpers::on_thread(move || theme::scan_if_changed(fingerprint)),
         Message::ThemesScanned,
     )
-}
-
-/// Rereads the theme files off the UI thread.
-fn rescan_themes() -> Task<Message> {
-    Task::perform(helpers::on_thread(theme::rescan), |themes| {
-        Message::ThemesScanned(Some(themes))
-    })
 }
 
 /// The font family to use for `family` from the config, spelled as
@@ -905,7 +846,6 @@ fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
             Key::Character(c) if modifiers.command() && c.as_str() == "h" => {
                 Some(Message::HelpPage)
             }
-            Key::Character(c) if modifiers.command() && c.as_str() == "r" => Some(Message::Refresh),
             _ => None,
         },
         Event::Window(window::Event::Focused) => Some(Message::WindowFocused),

@@ -86,8 +86,7 @@ jobs:
           cp target/release/revmo dist/revmo
           # The app icon, rendered from the logo's SVG source.
           rsvg-convert -w 512 -h 512 logo/revmo-icon-dark.svg -o dist/revmo.png
-          tar -czf dist/revmo-themes.tar.gz -C themes .
-          cd dist && sha256sum revmo revmo.png revmo-themes.tar.gz > SHA256SUMS
+          cd dist && sha256sum revmo revmo.png > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         if: steps.check.outputs.released == 'false'
         with:
