@@ -76,12 +76,16 @@ jobs:
             echo "::error::The binary says \"$reported\", expected \"revmo $VERSION\""
             exit 1
           fi
+      - name: Install rsvg-convert
+        if: steps.check.outputs.released == 'false'
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
       - name: Collect release files
         if: steps.check.outputs.released == 'false'
         run: |
           mkdir dist
           cp target/release/revmo dist/revmo
-          cp resources/icon.png dist/revmo.png
+          # The app icon, rendered from the logo's SVG source.
+          rsvg-convert -w 512 -h 512 logo/revmo-icon-dark.svg -o dist/revmo.png
           tar -czf dist/revmo-themes.tar.gz -C themes .
           cd dist && sha256sum revmo revmo.png revmo-themes.tar.gz > SHA256SUMS
       - uses: softprops/action-gh-release@v2
