@@ -27,7 +27,6 @@ pub fn on_thread<T: Send + 'static>(
 pub fn toast<'a>(msg: &str, level: &ToastLevel, c: Colors) -> Element<'a, Message> {
     let color = match level {
         ToastLevel::Error => c.danger,
-        ToastLevel::Success => c.success,
     };
     // One line: cut long messages short rather than overflow the footer.
     let room = styles::WINDOW_WIDTH - 2.0 - 2.0 * styles::PAD_X;

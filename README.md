@@ -1,205 +1,271 @@
 <div align="center">
-  
-![Revmo Logo](https://github.com/qzakwani/revmo/blob/master/resources/icon.png)
 
-# 🚀 **Revmo** 🚀
+<img src="logo/revmo-icon-dark.svg" alt="Revmo" width="96">
 
-**Your apps, just a keystroke away.**
+# revmo
 
-Welcome to **Revmo**, the app launcher that understands you’re busy. Say goodbye to endless scrolling and fumbling around for that one app. With Revmo, your apps gather in one elegant window, right in the center of your screen, ready for you to look up and launch.
+**Every app on your computer, a few keystrokes away.**
 
-_**Because clicking is overrated, and efficiency is everything.**_
+[![Release](https://img.shields.io/github/v/release/qzakwani/revmo)](https://github.com/qzakwani/revmo/releases/latest)
+
+<img src="docs/start.png" alt="Revmo listing apps" width="49%">
+<img src="docs/with-args.png" alt="Opening a link with an app" width="49%">
+
 </div>
 
-### 🧩 **Key Features**
+Revmo is an app launcher for Linux. Hit your shortcut, type a few letters
+of what you want, press Enter. No menus to dig through, no mouse needed.
 
-- 🎯 **No Mouse Needed**: Navigate and launch apps effortlessly with just your keyboard.
-- 🔎 **Fuzzy Search**: Type a few letters (`lw` → LibreOffice Writer); app descriptions and keywords are searched too.
-- 🕒 **Launch History**: Your most frequently and recently launched apps come first.
-- ⚡ **Blazingly Fast**: Powered by Rust for unparalleled performance.
-- 📦 **Self-Contained**: Fully standalone with zero dependencies—just download and go.
-- 🎨 **Themes**: 24 color themes, or write your own in a few lines.
-- 🗑️ **Customizable App List**: Hide unwanted apps with one line in the config file.
+## Features
 
-<div align="center">
-  <img src="https://github.com/qzakwani/revmo/blob/master/resources/app.png" alt="app" width="45%">
-  <img src="https://github.com/qzakwani/revmo/blob/master/resources/app_screen.png" alt="app in action" width="45%">
-</div>
+- **Fuzzy search**: `lw` finds LibreOffice Writer; descriptions and keywords are searched too.
+- **Learns your habits**: apps you launch often and recently come first.
+- **Actions, files and links**: run an app's actions (e.g. *New Private Window*), or open files and URLs with it.
+- **Themes**: 24 to pick from (Catppuccin, Dracula, Gruvbox, Nord, Tokyo Night, …), or make your own.
+- **Your app list**: hide the apps and actions you never use.
+- **X11 and Wayland**.
 
-## 🛠️ **Getting Started**
+## Install
 
-Before you install, make sure your system meets the following requirements:
-
-- **🖥️ OS**: Linux
-- **💻 Architecture**: x86_64
-- **⚙️ Needs**: A GNU system and a desktop environment (e.g., Hyprland, GNOME, KDE Plasma, Cinnamon)
-
-
-### **1. Installation**
-
-To install Revmo, simply run the following curl command:
+You need 64-bit (x86_64) Linux on a glibc-based distribution (most are;
+Alpine isn't), and `curl` and `sha256sum`.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/qzakwani/revmo/refs/heads/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/qzakwani/revmo/main/scripts/install.sh | sh
 ```
 
-💥 **Boom!** Revmo will automatically download and install itself—no extra steps required!
+This installs `revmo` to `~/.local/bin`, adds it to your application menu
+and writes a starter config to `~/.config/revmo/config` (if you don't have
+one yet).
 
-To update Revmo, run the same command again: it installs the latest release over the old one and keeps your config, your own themes and your history. (Updating from 1.0 starts fresh: its saved theme isn't carried over.)
+**To update**, run the same command again. Your config, your own themes
+and your launch history are kept.
 
-### **2. Running Revmo**
-
-Once installed, you can easily launch **Revmo** in two ways:
-
- - **CLI Command**:
-   Simply run the following command in your terminal:
-   ```sh
-   revmo
-   ```
-
- - **Application Menu**:  
-    Alternatively, you can find **Revmo** in your application menu or launcher (depending on your desktop environment).
-   Click the **Revmo** icon to launch it.
-
-🚀 **Ready to Go!** Once launched, **Revmo** will appear in the center of your screen, ready to help you launch your favorite apps!
-
-### **3. Tips for Using Revmo Effectively**
-
-To make the most out of **Revmo**, consider these tips:
-
-- **Bind Revmo to a Keyboard Shortcut**  
-  Launch **Revmo** instantly by binding it to a keyboard shortcut! Most desktop environments allow you to assign custom shortcuts to applications. Simply bind the `revmo` command to your favorite key combination, like `Alt + Space` or `Super + J`, for seamless access. Pressing the shortcut again (or clicking outside the window) closes Revmo.
-
-- **Use Themes to Match Your Style**  
-  Press `Ctrl + →` / `Ctrl + ←` to cycle through the themes. Revmo Dark and Revmo Light are built in; the installer adds 22 more to `~/.local/share/revmo/themes`. To make your own, create `~/.config/revmo/themes/<name>.theme`:
-
-  ```ini
-  [Theme]
-  Name=Mine
-  Background=#1d2021
-  Text=#ebdbb2
-  Accent=#b8bb26
-  ```
-
-  `Background`, `Text` and `Accent` are required. Revmo works out the other colors from them, or you can set any of `Raised`, `SelectedSoft`, `Frame`, `Border`, `BorderStrong`, `TextDim`, `TextMuted`, `TextFaint`, `OnAccent`, `Selection`, `OnSelection`, `Danger`, `Success` and `Highlight` (matched letters) yourself (`#rrggbb` or `#rrggbbaa`). A theme in `~/.config` replaces an installed one with the same name. Press `Ctrl + R` to load new or edited themes.
-
-- **The Config File**  
-  All settings live in one plain-text file, `~/.config/revmo/config`, that you write yourself (and can keep with your dotfiles, symlinked or not). You don't need one: every setting you leave out uses its default.
-
-  ```ini
-  [Revmo]
-  # Also changed by Ctrl + ← / Ctrl + →
-  Theme=Revmo Dark
-  # Empty: the bundled IBM Plex Mono
-  Font=
-  # Empty or auto: picked from your monitor
-  Scale=
-  # Apps to leave out, see below
-  Hidden=
-  ```
-
-  Comments go on their own lines starting with `#`. `Theme=` is the only setting Revmo writes: when `Ctrl + ←` / `Ctrl + →` saves a theme, only that line changes (or is added, creating the file if there's none) and the rest is kept as you wrote it.
-
-  If a line has a mistake (an unknown setting, a theme or font that isn't installed, a scale that isn't a number), Revmo uses the default for that setting and shows the problem when it opens; `Ctrl + H` lists them all. If Revmo can't read or understand the file at all, it leaves it untouched and won't save theme changes to it.
-
-- **Pick Your Font and Size**  
-  Revmo comes with IBM Plex Mono. To use another installed font, set `Font=` in the config file to its family name (e.g. `Font=JetBrains Mono`). Run `revmo list-fonts` to see the names you can use; fonts marked `mono` (monospaced) suit Revmo's look best.
-
-  If Revmo looks too small or too large, set `Scale=` in the config file (e.g. `Scale=1.5`); it scales the window and text together. Left empty, Revmo picks a scale from your monitor's size on X11 (a 27" 4K screen at 96 dpi gets 1.5, sized by the primary monitor) and follows the desktop's scaling on Wayland. If the automatic scale is wrong, for example with several monitors, set `Scale=` yourself. The help page (`Ctrl + H`) shows the scale in use. Font and scale changes apply the next time Revmo opens.
-
-<div align="center">
-  <img src="https://github.com/qzakwani/revmo/blob/master/resources/theme1.png" alt="theme" width="250">
-  <img src="https://github.com/qzakwani/revmo/blob/master/resources/theme2.png" alt="theme" width="250">
-</div>
-
-- **Take Advantage of App History**  
-  Revmo keeps a history of your launched apps, so you can quickly re-open frequently used applications without retyping.
-
-- **Actions, Files and Links**  
-  Each app has one row. Press `→` to open its actions pane: open it, or use one of its actions (e.g. *New Private Window*). Entries that accept files or URLs show `→ file`/`→ url`; press `→` on one to type the files to open with it, and wrap names containing spaces in quotes when giving several.
-
-- **Clean Up Your App List**  
-  To keep apps out of Revmo, list their IDs in the config file, separated by `;`. Run `revmo list-apps` to see every app and action with its ID on the right:
-
-  ```console
-  $ revmo list-apps | grep -i logs
-  Logs                  org.gnome.Logs.desktop
-  ```
-
-  ```ini
-  Hidden=org.gnome.Logs.desktop;nm-connection-editor.desktop;
-  ```
-
-  To hide only one action, use its ID (e.g. `firefox.desktop/new-private-window`). A hidden app's actions are hidden with it, and `revmo list-apps` marks what's hidden, so you can find what to remove to bring an app back. To hide an app from every launcher, not just Revmo, copy its `.desktop` file to `~/.local/share/applications/` and add `NoDisplay=true`.
-
-- **Keyboard Shortcuts**
-
-  | Key | Action |
-  |---|---|
-  | Type | Search |
-  | `↑` / `↓` / `Tab` | Move the selection |
-  | `Enter` | Launch the selected app or action |
-  | `→` | Open the actions pane; on an action that takes files, enter them |
-  | `←` | Back |
-  | `Ctrl + →` / `Ctrl + ←` | Next / previous theme |
-  | `Ctrl + R` | Reload the config file and rescan themes and apps (history is kept) |
-  | `Ctrl + H` | Help |
-  | `Esc` | Back, or close |
-
-- **Command Line**
-
-  | Command | What it does |
-  |---|---|
-  | `revmo` | Open Revmo (or close it if it's open) |
-  | `revmo list-apps` | List apps and their actions, with the IDs `Hidden=` takes |
-  | `revmo list-fonts` | List installed font families, as `Font=` takes them |
-  | `revmo --help` | Show the commands |
-  | `revmo --version` | Show the version |
-
-- **Where Revmo Keeps Its Files**
-
-  Two folders: one for you, one for Revmo.
-
-  - `~/.config/revmo/` is yours:
-    - `config`: theme, font, scale and hidden apps (written by you; Revmo only updates `Theme=`)
-    - `themes/`: your own themes
-  - `~/.local/share/revmo/` is Revmo's:
-    - `themes/`: the themes installed with Revmo (replaced on update)
-    - `usage`: launch history
-    - `cache/`: cached apps and themes, rebuilt automatically (safe to delete)
-    - `version`: the installed release
-
-With these simple tweaks, you can elevate your productivity and enjoy the full power of **Revmo**! 🚀
-
-### **4. Uninstallation**
-
-If you ever need to remove **Revmo**, the process is just as simple as installing it. Run the following command in your terminal:
+**To uninstall**:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/qzakwani/revmo/refs/heads/main/scripts/uninstall.sh | sh
+curl -fsSL https://raw.githubusercontent.com/qzakwani/revmo/main/scripts/uninstall.sh | sh
 ```
 
-🧹 **Clean Exit**: This will completely remove Revmo from your system, leaving no traces behind.
+> [!WARNING]
+> Uninstalling removes everything, including your config and your own
+> themes in `~/.config/revmo`. Copy them somewhere first if you want to
+> keep them.
 
-### **5. Potential Problems and Solutions**
+## ⌨️ Bind it to a shortcut
 
-Here are some common issues you might encounter and how to fix them:
+> [!IMPORTANT]
+> **This is how Revmo is meant to be used.** Bind `revmo` to a key
+> combination and it's one keypress away from anywhere. Press it again
+> (or `Esc`, or click outside the window) to close it.
 
-- **Revmo Doesn't Launch**
+Pick any free combination; `Super + Space`, `Super + D` and `Alt + Space`
+are popular. Use the command `revmo`, or the full path
+`/home/<you>/.local/bin/revmo` if the shortcut doesn't work with just the
+name.
 
-  - **Cause**: The `revmo` command might not be in your system's PATH.
-  - **Solution**: If you used the installation method above, add `revmo` to your PATH, or the whole dir: `$HOME/.local/bin` (should be there by default!)
+<details>
+<summary><b>GNOME</b></summary>
 
-- **A Newly Installed App or Icon Theme Doesn't Show Up**
-  - **Solution**: New and removed apps are picked up automatically on the next start. After changing your icon theme, press `Ctrl + R` to rescan.
+Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts →
+**+**. Name it `Revmo`, set the command to `revmo` and press your keys.
 
-- **Terminal Apps (e.g. Vim, htop) Don't Open**
-  - **Cause**: Revmo opens them in a terminal emulator and didn't find one.
-  - **Solution**: Set the `TERMINAL` environment variable to your terminal (e.g. `export TERMINAL=kitty`), or install one of kitty, foot, alacritty, wezterm, ghostty, gnome-terminal, konsole, xfce4-terminal, tilix or xterm.
+</details>
 
-- **Shortcut Key Doesn’t Work**
-  - **Cause**: Desktop environment settings may not have applied the custom shortcut or the command is not found.
-  - **Solution**: Double-check your keybinding settings and reassign the shortcut or add the full command path: `$HOME/.local/bin/revmo` -> change home with yours (e.g., /home/foo/.local/bin/revmo)
+<details>
+<summary><b>KDE Plasma</b></summary>
 
-If you encounter other problems, feel free file an issue. I’ve got you covered! 🛠️
+System Settings → Keyboard → Shortcuts → Add New → Command or Script.
+Enter `revmo`, then set the shortcut.
 
+</details>
+
+<details>
+<summary><b>Cinnamon</b></summary>
+
+System Settings → Keyboard → Shortcuts → Add custom shortcut. Set the
+command to `revmo`, then click the empty binding and press your keys.
+
+</details>
+
+<details>
+<summary><b>Hyprland</b></summary>
+
+In `~/.config/hypr/hyprland.conf`:
+
+```ini
+bind = SUPER, SPACE, exec, revmo
+```
+
+</details>
+
+<details>
+<summary><b>Sway / i3</b></summary>
+
+In your config:
+
+```
+bindsym $mod+space exec revmo
+```
+
+</details>
+
+You can also open Revmo from your application menu or by running `revmo`
+in a terminal. Press `Ctrl + H` inside it for the keys.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `revmo` | Open Revmo (or close it if it's open) |
+| `revmo list-apps` | List apps and their actions, with the IDs `Hidden=` takes |
+| `revmo list-fonts` | List installed font families, as `Font=` takes them |
+| `revmo --help` | Show the commands |
+| `revmo --version` | Show the version |
+
+## Configuration
+
+Settings live in `~/.config/revmo/config`. The installer writes this one
+for you; every setting is commented out, so the defaults apply until you
+remove a `#`:
+
+```ini
+# Revmo settings. Every setting is optional: remove the # to use one.
+[Revmo]
+
+# Color theme; Ctrl+Left / Ctrl+Right also changes it.
+# Theme=Revmo Dark
+
+# Font family name; run `revmo list-fonts` to see them. Monospaced ones
+# (marked mono) suit revmo best.
+# Font=
+
+# UI size, e.g. 1.5; empty or auto picks one from your monitor.
+# Scale=
+
+# Apps and actions to leave out, separated by ;
+# Run `revmo list-apps` to see their IDs (the last column).
+# Hidden=
+```
+
+Changes apply the next time you open Revmo.
+
+Revmo only ever changes the `Theme=` line (when you switch theme with
+`Ctrl + ←` / `Ctrl + →`) and leaves the rest as you wrote it, so the file
+is safe to keep with your dotfiles. If a line has a mistake, Revmo uses
+the default for that setting and tells you; `Ctrl + H` lists every
+problem.
+
+<details>
+<summary><b>Hiding apps</b></summary>
+
+Find the app's ID with `revmo list-apps`, then add it to `Hidden=`:
+
+```console
+$ revmo list-apps | grep -i logs
+Logs                  org.gnome.Logs.desktop
+```
+
+```ini
+Hidden=org.gnome.Logs.desktop;nm-connection-editor.desktop;
+```
+
+Hiding an app hides its actions too. To hide a single action, use its ID
+(e.g. `firefox.desktop/new-private-window`). `revmo list-apps` marks
+what's hidden, so you can find what to remove to bring something back.
+
+</details>
+
+<details>
+<summary><b>Scale</b></summary>
+
+On Wayland, Revmo follows your desktop's scaling. On X11, an empty
+`Scale=` works one out from your primary monitor's size. If it comes out
+too small or too large (for example with several monitors), set it
+yourself, e.g. `Scale=1.5`. `Ctrl + H` shows the scale in use.
+
+</details>
+
+## Themes
+
+Switch themes with `Ctrl + ←` / `Ctrl + →`; the one you land on is saved.
+
+To make your own, save this as `~/.config/revmo/themes/<name>.theme` and
+reopen Revmo. `Background`, `Text` and `Accent` are all you
+need; the other colors are optional and worked out from those three when
+left out. The values shown are what Revmo works out for this example;
+remove a `#` to set one yourself.
+
+```ini
+[Theme]
+# Shown in Revmo and used by Theme= in the config; the file name if left out.
+Name=Mine
+
+# Required.
+Background=#1d2021
+Text=#ebdbb2
+Accent=#b8bb26
+
+# Optional.
+# Footer and input fields.
+# Raised=#232625
+# The highlighted row while the actions pane is open.
+# SelectedSoft=#2b2d2b
+# The window's outer border.
+# Frame=#3a3a35
+# Dividers between sections.
+# Border=#3a3a35
+# BorderStrong=#48473f
+# Secondary text, from most to least visible.
+# TextDim=#ada387
+# TextMuted=#88816c
+# TextFaint=#676355
+# Text on the accent color.
+# OnAccent=#1d2021
+# The selected row, and the text on it.
+# Selection=#b8bb26
+# OnSelection=#1d2021
+# Errors and confirmations.
+# Danger=#e07b6a
+# Success=#8fbf6a
+# Matched letters in search results.
+# Highlight=#b8bb26
+```
+
+Colors are `#rrggbb`, or `#rrggbbaa` with transparency. Your theme
+replaces a bundled one with the same name, except Revmo Dark and Revmo
+Light.
+
+## Troubleshooting
+
+**`revmo: command not found`**: `~/.local/bin` isn't in your `PATH`. Add
+`export PATH="$PATH:$HOME/.local/bin"` to your shell's config (e.g.
+`~/.bashrc`), or run `~/.local/bin/revmo`.
+
+**The shortcut does nothing**: your desktop may not find `revmo` by name.
+Use the full path in the shortcut, e.g. `/home/<you>/.local/bin/revmo`.
+
+**A newly installed app or a new icon theme doesn't show up**: Revmo
+picks up new and removed apps and icon theme changes each time it opens,
+a moment after the window appears. Close it and open it again.
+
+**Terminal apps (Vim, htop, …) don't open**: Revmo didn't find a terminal
+to run them in. Set `TERMINAL` (e.g. `export TERMINAL=kitty`) or install
+one of kitty, foot, alacritty, wezterm, ghostty, gnome-terminal, konsole,
+xfce4-terminal, tilix or xterm.
+
+Something else? [Open an issue](https://github.com/qzakwani/revmo/issues).
+
+## Building from source
+
+Needs Rust 1.99 or newer.
+
+```sh
+cargo build --release
+./target/release/revmo
+```
+
+## Credits
+
+Revmo ships with the [IBM Plex Mono](https://github.com/IBM/plex) font.
+The bundled themes are ports of their authors' color schemes.

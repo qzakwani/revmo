@@ -1,5 +1,5 @@
-//! Color themes. Two are built in; the rest are `.theme` files the user
-//! (or the installer) puts in a `revmo/themes` folder:
+//! Color themes: two built in, the ones bundled in [`crate::bundled_themes`],
+//! and `.theme` files the user puts in `~/.config/revmo/themes`:
 //!
 //! ```text
 //! [Theme]
@@ -21,8 +21,9 @@ use iced::theme::palette::is_dark;
 use iced::{Color, Theme};
 use rkyv::{Archive, Deserialize, Serialize};
 
+use crate::bundled_themes::BUNDLED;
 use crate::{HOME_DIR, store};
-use revmo::xdg::base_dirs::{config_home, data_dirs};
+use revmo::xdg::base_dirs::config_home;
 use revmo::xdg::keyfile::KeyFile;
 
 pub const DEFAULT: &str = "Revmo Dark";
@@ -251,15 +252,39 @@ pub fn built_in() -> [ThemeDef; 2] {
     ]
 }
 
-/// The built-in themes followed by `files`, skipping any file theme named
-/// like a built-in one.
+/// The themes in [`BUNDLED`], with their missing colors worked out.
+pub fn bundled() -> Vec<ThemeDef> {
+    BUNDLED
+        .iter()
+        .map(|b| {
+            let given = |key: &str| {
+                b.other
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|&(_, c)| rgb(c))
+            };
+            let colors = Colors::derive(rgb(b.background), rgb(b.text), rgb(b.accent), given);
+            ThemeDef::new(b.name.to_string(), colors)
+        })
+        .collect()
+}
+
+/// The built-in themes, then the bundled ones and `files` sorted by name.
+/// A file theme replaces a bundled one with the same name, but not a
+/// built-in one.
 pub fn with_built_in(files: Vec<ThemeDef>) -> Vec<ThemeDef> {
     let mut all = built_in().to_vec();
-    let files: Vec<ThemeDef> = files
+    let mut rest: Vec<ThemeDef> = files
         .into_iter()
         .filter(|f| !all.iter().any(|b| b.name == f.name))
         .collect();
-    all.extend(files);
+    let bundled: Vec<ThemeDef> = bundled()
+        .into_iter()
+        .filter(|b| !rest.iter().any(|f| f.name == b.name))
+        .collect();
+    rest.extend(bundled);
+    rest.sort_by_cached_key(|t| t.name.to_lowercase());
+    all.extend(rest);
     all
 }
 
@@ -309,12 +334,9 @@ fn scan_and_store(dirs: &[PathBuf], fingerprint: u64) -> Vec<ThemeDef> {
     themes
 }
 
-/// Folders holding `.theme` files, highest priority first: the user's own
-/// in `$XDG_CONFIG_HOME`, then the installed ones in the data dirs.
+/// Folders holding `.theme` files: the user's own, in `$XDG_CONFIG_HOME`.
 pub fn dirs(home: &Path) -> Vec<PathBuf> {
-    let mut dirs = vec![config_home(home).join("revmo/themes")];
-    dirs.extend(data_dirs(home).into_iter().map(|d| d.join("revmo/themes")));
-    dirs
+    vec![config_home(home).join("revmo/themes")]
 }
 
 /// The `.theme` files directly inside `dir`, sorted by name.
@@ -449,8 +471,8 @@ mod tests {
     fn themes() -> Vec<ThemeDef> {
         with_built_in(vec![
             parse(
-                "[Theme]\nName=B\nBackground=#000000\nText=#ffffff\nAccent=#ff0000",
-                "b",
+                "[Theme]\nName=Zz\nBackground=#000000\nText=#ffffff\nAccent=#ff0000",
+                "zz",
             )
             .unwrap(),
         ])
@@ -459,10 +481,12 @@ mod tests {
     #[test]
     fn cycles_by_name() {
         let themes = themes();
-        assert_eq!(next(&themes, "B").name, DEFAULT);
-        assert_eq!(previous(&themes, DEFAULT).name, "B");
+        // Built-ins first, then the rest by name: "Zz" comes last.
+        assert_eq!(next(&themes, "Zz").name, DEFAULT);
+        assert_eq!(previous(&themes, DEFAULT).name, "Zz");
         assert_eq!(next(&themes, "No Such Theme").name, "Revmo Light");
-        assert!(by_name(&themes, "B").is_some());
+        assert_eq!(next(&themes, "Revmo Light").name, "Catppuccin Frappé");
+        assert!(by_name(&themes, "Zz").is_some());
         assert!(by_name(&themes, "No Such Theme").is_none());
     }
 
@@ -527,7 +551,7 @@ mod tests {
         assert_eq!(x.colors().accent, rgb(0xff0000));
 
         let all = with_built_in(scanned);
-        assert_eq!(all.len(), 3);
+        assert_eq!(all.len(), 2 + BUNDLED.len() + 1);
         assert_eq!(by_name(&all, DEFAULT).unwrap(), &built_in()[0]);
 
         fs::remove_file(dirs[0].join("x.theme")).unwrap();
@@ -535,16 +559,32 @@ mod tests {
     }
 
     #[test]
+    fn file_themes_replace_bundled_ones() {
+        let mine = parse(
+            "[Theme]\nName=Dracula\nBackground=#000000\nText=#ffffff\nAccent=#00ff00",
+            "dracula",
+        )
+        .unwrap();
+        let all = with_built_in(vec![mine.clone()]);
+        assert_eq!(all.len(), 2 + BUNDLED.len());
+        assert_eq!(by_name(&all, "Dracula"), Some(&mine));
+    }
+
+    #[test]
     fn shipped_themes_are_readable() {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("themes");
-        let files = files_in(&dir);
-        assert!(!files.is_empty());
-        let mut all = built_in().to_vec();
-        for file in files {
-            let contents = fs::read_to_string(&file).unwrap();
-            all.push(parse(&contents, "").unwrap_or_else(|e| panic!("{}: {e}", file.display())));
+        for b in &BUNDLED {
+            for (key, _) in b.other {
+                assert!(
+                    KEYS.contains(key) && !["Background", "Text", "Accent"].contains(key),
+                    "{}: {key} isn't an optional color",
+                    b.name
+                );
+            }
         }
-        for theme in all {
+        let mut names: Vec<String> = Vec::new();
+        for theme in built_in().into_iter().chain(bundled()) {
+            assert!(!names.contains(&theme.name), "{} twice", theme.name);
+            names.push(theme.name.clone());
             let c = theme.colors();
             // Text on the fills revmo picks it for: WCAG AA for normal text,
             // and for large or bold text on the accent. Background and text

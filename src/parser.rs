@@ -41,21 +41,16 @@ impl App {
         store::get_apps()
     }
 
-    /// A fresh scan if the desktop files or environment changed since
-    /// `fingerprint` (or there is none), else `None`. Blocks on file IO.
+    /// A fresh scan if the desktop files, icon theme or environment changed
+    /// since `fingerprint` (or there is none), else `None`. Blocks on file
+    /// IO, and on gsettings where that holds the icon theme.
     pub fn scan_if_changed(fingerprint: Option<u64>) -> Option<Vec<App>> {
         let home = Path::new(HOME_DIR.as_str());
         let data_dirs = base_dirs::data_dirs(home);
-        let current = self::fingerprint(&data_dirs);
-        (fingerprint != Some(current)).then(|| scan_and_store(home, &data_dirs, current))
-    }
-
-    /// A fresh scan, whether or not anything changed. Blocks on file IO.
-    pub fn scan() -> Vec<App> {
-        let home = Path::new(HOME_DIR.as_str());
-        let data_dirs = base_dirs::data_dirs(home);
-        let current = fingerprint(&data_dirs);
-        scan_and_store(home, &data_dirs, current)
+        let icon_theme = icons::current_theme(home);
+        let current = self::fingerprint(&data_dirs, &icon_theme);
+        (fingerprint != Some(current))
+            .then(|| scan_and_store(home, &data_dirs, &icon_theme, current))
     }
 
     /// What the search box matches against, with each text's weight.
@@ -151,35 +146,41 @@ pub fn rank_groups(scores: &[Option<f64>], parents: &[usize]) -> Vec<usize> {
     ranked.into_iter().map(|(_, i)| i).collect()
 }
 
-/// Changes whenever a desktop file is added, removed or edited, or the
-/// environment that decides how they're read changes. Icon theme changes
-/// aren't tracked; Ctrl+R rescans.
-fn fingerprint(data_dirs: &[std::path::PathBuf]) -> u64 {
+/// Changes whenever a desktop file is added, removed or edited, the icon
+/// theme is switched, or the environment that decides how they're read
+/// changes. Icons added to or removed from a theme aren't tracked.
+fn fingerprint(data_dirs: &[std::path::PathBuf], icon_theme: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
     for var in ["XDG_CURRENT_DESKTOP", "LC_ALL", "LC_MESSAGES", "LANG"] {
         env::var_os(var).hash(&mut hasher);
     }
     data_dirs.hash(&mut hasher);
+    icon_theme.hash(&mut hasher);
     base_dirs::applications_mtimes(data_dirs).hash(&mut hasher);
     hasher.finish()
 }
 
 /// Scans with the fingerprint taken before scanning, so a file changed
 /// mid-scan triggers another scan next time.
-fn scan_and_store(home: &Path, data_dirs: &[std::path::PathBuf], fingerprint: u64) -> Vec<App> {
-    let mut apps = scan(home, data_dirs);
+fn scan_and_store(
+    home: &Path,
+    data_dirs: &[std::path::PathBuf],
+    icon_theme: &str,
+    fingerprint: u64,
+) -> Vec<App> {
+    let mut apps = scan(home, data_dirs, icon_theme);
     apps.sort_by_cached_key(|a| a.name.to_lowercase());
     store::store_apps(fingerprint, &apps);
     apps
 }
 
-fn scan(home: &Path, data_dirs: &[std::path::PathBuf]) -> Vec<App> {
+fn scan(home: &Path, data_dirs: &[std::path::PathBuf], icon_theme: &str) -> Vec<App> {
     let ctx = Context {
         locale: Locale::from_env(),
         desktops: base_dirs::current_desktops(),
     };
     let icons = IconLookup::new(
-        &icons::current_theme(home),
+        icon_theme,
         icons::base_dirs(home, data_dirs),
         ICON_LOOKUP_SIZE,
     );
