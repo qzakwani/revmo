@@ -11,7 +11,7 @@ const LOGO_HEIGHT: f32 = 34.0;
 
 const SHORTCUTS: [(&str, &str); 7] = [
     ("↲", "run the selected app"),
-    ("↑↓ / tab", "move the selection"),
+    ("↑↓", "move the selection"),
     ("→", "actions; arguments of an action"),
     ("←", "back"),
     ("ctrl+→ / ctrl+←", "next / previous theme"),

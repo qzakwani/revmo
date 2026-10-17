@@ -422,12 +422,13 @@ pub fn parse(contents: &str, fallback_name: &str) -> Result<ThemeDef, String> {
     }
     let given = |key: &str| group.raw(key).and_then(parse_color);
     let required = |key: &str| given(key).ok_or_else(|| format!("{key} is missing"));
-    let colors = Colors::derive(
-        required("Background")?,
-        required("Text")?,
-        required("Accent")?,
-        given,
-    );
+    // The window is opaque, so a see-through background would only come out
+    // darker; its alpha is ignored.
+    let background = Color {
+        a: 1.0,
+        ..required("Background")?
+    };
+    let colors = Colors::derive(background, required("Text")?, required("Accent")?, given);
     // Trimmed, as the config's Theme= is, so names always match.
     let name = group
         .string("Name")

@@ -57,7 +57,7 @@ rm -rf "$CONFIG_DIR" "$APP_DIR" "$OLD_STATE_DIR" "$OLD_CACHE_DIR"
 rm -f "$HOME/.config/$APP_NAME/revmo.conf" "$HOME/.local/share/$APP_NAME/apps.store"
 rmdir "$HOME/.config/$APP_NAME" "$HOME/.local/share/$APP_NAME" 2>/dev/null
 case "${XDG_RUNTIME_DIR:-}" in
-    /*) rm -f "$XDG_RUNTIME_DIR/$APP_NAME.sock" ;;
+    /*) rm -f "$XDG_RUNTIME_DIR/$APP_NAME.sock" "$XDG_RUNTIME_DIR/$APP_NAME.lock" ;;
 esac
 
 echo "Uninstallation complete."

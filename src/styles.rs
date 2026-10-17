@@ -7,7 +7,8 @@ use std::sync::OnceLock;
 use iced::advanced::graphics::text::cosmic_text::fontdb::{FaceInfo, Source};
 use iced::font::Weight;
 use iced::widget::{
-    Rule, Space, button, container, rich_text, row, rule, scrollable, span, text, text_input,
+    Rule, Space, button, column, container, rich_text, row, rule, scrollable, span, text,
+    text_input,
 };
 use iced::{Alignment, Background, Border, Color, Element, Fill, Font, Padding, border};
 
@@ -158,14 +159,25 @@ fn fill(color: Color) -> Option<Background> {
     Some(Background::Color(color))
 }
 
-/// The whole window: background and outer border.
+/// The whole window's text color. No background or border: a window-sized
+/// quad is redrawn, slowly, for every changed region of every frame. The
+/// window's clear color is already the background (see `Theme::to_iced`),
+/// and [`frame_edges`] draws the outline.
 pub fn frame(c: Colors) -> container::Style {
     container::Style {
         text_color: Some(c.text),
-        background: fill(c.background),
-        border: border::color(c.frame).width(1),
         ..container::Style::default()
     }
+}
+
+/// `content` inside the window's 1px outline, drawn as four thin rules.
+pub fn frame_edges<'a, Message: 'a>(
+    c: Colors,
+    content: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    let h = || rule::horizontal(1).style(move |_| line(c.frame));
+    let v = || rule::vertical(1).style(move |_| line(c.frame));
+    column![h(), row![v(), content.into(), v()].height(Fill), h()].into()
 }
 
 pub fn footer(c: Colors) -> container::Style {

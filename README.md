@@ -6,15 +6,16 @@
 
 **Every app on your computer, a few keystrokes away.**
 
+Revmo is a fast, keyboard-first app launcher for Linux.<br>
+Hit your shortcut, type a few letters, press Enter, and you're there:
+no menus to dig through, no mouse needed.
+
 [![Release](https://img.shields.io/github/v/release/qzakwani/revmo)](https://github.com/qzakwani/revmo/releases/latest)
 
 <img src="docs/start.png" alt="Revmo listing apps" width="49%">
 <img src="docs/with-args.png" alt="Opening a link with an app" width="49%">
 
 </div>
-
-Revmo is an app launcher for Linux. Hit your shortcut, type a few letters
-of what you want, press Enter. No menus to dig through, no mouse needed.
 
 ## Features
 
@@ -113,16 +114,6 @@ bindsym $mod+space exec revmo
 You can also open Revmo from your application menu or by running `revmo`
 in a terminal. Press `Ctrl + H` inside it for the keys.
 
-## Commands
-
-| Command | What it does |
-|---|---|
-| `revmo` | Open Revmo (or close it if it's open) |
-| `revmo list-apps` | List apps and their actions, with the IDs `Hidden=` takes |
-| `revmo list-fonts` | List installed font families, as `Font=` takes them |
-| `revmo --help` | Show the commands |
-| `revmo --version` | Show the version |
-
 ## Configuration
 
 Settings live in `~/.config/revmo/config`. The installer writes this one
@@ -186,6 +177,16 @@ yourself, e.g. `Scale=1.5`. `Ctrl + H` shows the scale in use.
 
 </details>
 
+## Commands
+
+| Command | What it does |
+|---|---|
+| `revmo` | Open Revmo (or close it if it's open) |
+| `revmo list-apps` | List your apps and their actions with their IDs, to [hide](#configuration) the ones you don't use |
+| `revmo list-fonts` | List the fonts installed on your computer, to [pick one](#configuration) for Revmo |
+| `revmo --help` | Show the commands |
+| `revmo --version` | Show the version |
+
 ## Themes
 
 Switch themes with `Ctrl + ←` / `Ctrl + →`; the one you land on is saved.
@@ -235,7 +236,8 @@ Accent=#b8bb26
 # Highlight=#b8bb26
 ```
 
-Colors are `#rrggbb`, or `#rrggbbaa` with transparency. Your theme
+Colors are `#rrggbb`, or `#rrggbbaa` with transparency (except
+`Background`: the window itself is never see-through). Your theme
 replaces a bundled one with the same name, except Revmo Dark and Revmo
 Light.
 
@@ -253,9 +255,11 @@ picks up new and removed apps and icon theme changes each time it opens,
 a moment after the window appears. Close it and open it again.
 
 **Terminal apps (Vim, htop, …) don't open**: Revmo didn't find a terminal
-to run them in. Set `TERMINAL` (e.g. `export TERMINAL=kitty`) or install
-one of kitty, foot, alacritty, wezterm, ghostty, gnome-terminal, konsole,
-xfce4-terminal, tilix or xterm.
+to run them in. Install one of kitty, foot, alacritty, wezterm, ghostty,
+gnome-terminal, konsole, xfce4-terminal, tilix or xterm (or
+`xdg-terminal-exec`), or name yours in `TERMINAL`. A shortcut doesn't read
+your shell's config, so set it in `~/.profile` (e.g.
+`export TERMINAL=kitty`), then log out and back in.
 
 Something else? [Open an issue](https://github.com/qzakwani/revmo/issues).
 

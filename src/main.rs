@@ -12,10 +12,10 @@ mod styles;
 mod theme;
 
 use std::sync::LazyLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{env, thread, vec};
 
-use iced::keyboard::key::{Key, Named};
+use iced::keyboard::key::{Code, Key, Named, Physical};
 use iced::widget::operation::{focus, focus_next, focus_previous};
 use iced::widget::{column, container, row, text, text_input};
 use iced::window::settings::PlatformSpecific;
@@ -48,10 +48,16 @@ static USAGE_FILE: LazyLock<std::path::PathBuf> = LazyLock::new(|| APP_DIR.join(
 
 // How much launch history counts against match quality; a full-word match
 // is worth roughly 100.
-const FRECENCY_WEIGHT: f64 = 10.0;
+const FREQUENCY_WEIGHT: f64 = 10.0;
 
 // Actions ("New Window", ...) rank a little below their app on similar matches.
 const ACTION_WEIGHT: f64 = 0.9;
+
+// Key repeats closer together than this are dropped. Repeats that queued up
+// behind a slow frame arrive in a burst, and would otherwise keep moving the
+// selection after the key is released. Kept well below any key repeat
+// interval (GNOME's default is 30ms), so a held key never loses a step.
+const REPEAT_GAP: Duration = Duration::from_millis(5);
 
 const TOAST_DURATION: Duration = Duration::from_secs(5);
 // Config mistakes stay up longer: there may be several to read.
@@ -71,17 +77,31 @@ fn main() -> iced::Result {
     let args = env::args_os()
         .skip(1)
         .map(|a| a.to_string_lossy().into_owned());
-    match cli::parse(args) {
-        Ok(cli::Command::Open) => {}
-        // Before the instance check, so a running launcher stays open.
-        Ok(command) => {
-            cli::run(command);
-            return Ok(());
-        }
+    let command = match cli::parse(args) {
+        Ok(command) => command,
         Err(e) => {
             eprintln!("revmo: {e}\nRun `revmo --help` to see the commands.");
             std::process::exit(2);
         }
+    };
+    // Everything but --help and --version reads files under $HOME.
+    let needs_home = !matches!(command, cli::Command::Help | cli::Command::Version);
+    if needs_home && env::var_os("HOME").is_none_or(|home| home.is_empty()) {
+        eprintln!("revmo: $HOME is not set");
+        std::process::exit(1);
+    }
+    if !matches!(command, cli::Command::Open) {
+        // Before the instance check, so a running launcher stays open.
+        cli::run(command);
+        return Ok(());
+    }
+    // Without one, iced fails to start with a panic and a backtrace hint.
+    let has_display = ["WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY"]
+        .iter()
+        .any(|var| env::var_os(var).is_some_and(|v| !v.is_empty()));
+    if !has_display {
+        eprintln!("revmo: no display to open a window on (DISPLAY and WAYLAND_DISPLAY are unset)");
+        std::process::exit(1);
     }
 
     match instance::acquire(&instance::socket_path(&APP_DIR)) {
@@ -183,6 +203,8 @@ struct Revmo {
     is_loading: bool,
     /// Set once the window has had focus; losing it after that closes revmo.
     was_focused: bool,
+    /// When a held arrow key last moved the selection (see `REPEAT_GAP`).
+    last_repeat: Option<Instant>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -199,6 +221,8 @@ enum Message {
     RunIndex,
     SelectDown,
     SelectUp,
+    /// A key repeat of ↓ (`true`) or ↑ while the key is held.
+    RepeatStep(bool),
     /// → : opens the actions pane, or the arguments of its selected item.
     Forward,
     /// ← : closes the arguments, or the actions pane.
@@ -288,6 +312,7 @@ impl Revmo {
             usage: usage::Usage::load(&USAGE_FILE),
             is_loading: true,
             was_focused: false,
+            last_repeat: None,
         };
         revmo.apply_theme();
         revmo
@@ -426,7 +451,7 @@ impl Revmo {
                     score *= ACTION_WEIGHT;
                 }
                 let usage = self.usage.score(&app.key, now);
-                Some(score + FRECENCY_WEIGHT * usage.ln_1p())
+                Some(score + FREQUENCY_WEIGHT * usage.ln_1p())
             })
             .collect();
         self.visible = parser::rank_groups(&scores, &self.parents);
@@ -541,6 +566,22 @@ impl Revmo {
                     self.selected -= 1;
                 }
                 Task::none()
+            }
+
+            Message::RepeatStep(down) => {
+                let now = Instant::now();
+                if self
+                    .last_repeat
+                    .is_some_and(|t| now.duration_since(t) < REPEAT_GAP)
+                {
+                    return Task::none();
+                }
+                self.last_repeat = Some(now);
+                self.update(if down {
+                    Message::SelectDown
+                } else {
+                    Message::SelectUp
+                })
             }
 
             Message::ArgsChange(i, arg) => {
@@ -662,12 +703,13 @@ impl Revmo {
             ]
             .into()
         };
-        container(content)
-            .padding(1)
-            .width(Fill)
-            .height(Fill)
-            .style(move |_| styles::frame(c))
-            .into()
+        styles::frame_edges(
+            c,
+            container(content)
+                .width(Fill)
+                .height(Fill)
+                .style(move |_| styles::frame(c)),
+        )
     }
 
     fn input_row(&self) -> Element<'_, Message> {
@@ -840,7 +882,15 @@ fn check_font(family: &str) -> (String, Option<String>) {
 
 fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
     match e {
-        Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => match key {
+        Event::Keyboard(keyboard::Event::KeyPressed {
+            key,
+            physical_key,
+            modifiers,
+            repeat,
+            ..
+        }) => match key {
+            Key::Named(Named::ArrowDown) if repeat => Some(Message::RepeatStep(true)),
+            Key::Named(Named::ArrowUp) if repeat => Some(Message::RepeatStep(false)),
             Key::Named(Named::ArrowDown) => Some(Message::SelectDown),
             Key::Named(Named::ArrowUp) => Some(Message::SelectUp),
             Key::Named(Named::Escape) => Some(Message::Escape),
@@ -848,8 +898,13 @@ fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
             Key::Named(Named::ArrowRight) => Some(Message::Forward),
             Key::Named(Named::ArrowLeft) if modifiers.command() => Some(Message::BackwardTheme),
             Key::Named(Named::ArrowLeft) => Some(Message::Back),
-            Key::Named(Named::Tab) => Some(Message::SelectDown),
-            Key::Character(c) if modifiers.command() && c.as_str() == "h" => {
+            // The key that types h; on a layout without Latin letters
+            // (Arabic, Russian, ...), the key in h's place.
+            Key::Character(c)
+                if modifiers.command()
+                    && (c.as_str() == "h"
+                        || !c.is_ascii() && physical_key == Physical::Code(Code::KeyH)) =>
+            {
                 Some(Message::HelpPage)
             }
             _ => None,
