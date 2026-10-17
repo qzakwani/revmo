@@ -78,9 +78,10 @@ pub fn app_row<'a>(
         RowState::Dimmed => (c.text_dim, c.text_muted),
         RowState::Normal | RowState::Marked => (c.text, c.text_muted),
     };
-    let matched = (!selected).then_some(c.highlight);
-    // Dimmed rows stay quiet so the marked row stands out.
-    let query = if state == RowState::Dimmed { "" } else { query };
+    // Dimmed rows stay quiet so the marked row stands out: their matches
+    // keep the semibold, so no text moves when the pane opens, but not the
+    // highlight color.
+    let matched = (!selected && state != RowState::Dimmed).then_some(c.highlight);
     let title_width = if full {
         styles::TITLE_WIDTH
     } else {
@@ -152,27 +153,22 @@ pub fn app_row<'a>(
         .height(styles::ROW_HEIGHT)
         .width(Fill)
         .align_y(Alignment::Center);
-    let body: Element<'a, Message> = match state {
-        RowState::Selected => content
-            .padding([0.0, styles::PAD_X])
-            .style(move |_| styles::selected(c))
-            .into(),
-        RowState::Marked => row![
-            container(Space::new())
-                .width(styles::MARK_WIDTH)
-                .height(styles::ROW_HEIGHT)
-                .style(move |_| styles::solid(c.accent)),
-            content
-                .padding([0.0, styles::PAD_X])
-                .style(move |_| styles::soft_selected(c)),
-        ]
-        .into(),
-        // Lined up with the text of a marked row.
-        RowState::Dimmed => content
-            .padding(Padding::from([0.0, styles::PAD_X]).left(styles::PAD_X + styles::MARK_WIDTH))
-            .into(),
-        RowState::Normal => content.padding([0.0, styles::PAD_X]).into(),
-    };
+    // Every row has the marker bar, in its left padding, and only a marked
+    // row colors it: opening the actions pane then moves nothing.
+    let mark = container(Space::new())
+        .width(styles::MARK_WIDTH)
+        .height(styles::ROW_HEIGHT)
+        .style(move |_| match state {
+            RowState::Marked => styles::solid(c.accent),
+            _ => container::Style::default(),
+        });
+    let content = content
+        .padding(Padding::from([0.0, styles::PAD_X]).left(styles::PAD_X - styles::MARK_WIDTH));
+    let body = container(row![mark, content]).style(move |_| match state {
+        RowState::Selected => styles::selected(c),
+        RowState::Marked => styles::soft_selected(c),
+        RowState::Normal | RowState::Dimmed => container::Style::default(),
+    });
     mouse_area(body)
         .on_press(Message::RunPress(app.key.clone()))
         .interaction(mouse::Interaction::Pointer)
