@@ -49,7 +49,7 @@ pub fn toast<'a>(msg: &str, level: &ToastLevel, c: Colors) -> Element<'a, Messag
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RowState {
     Normal,
-    /// The selection: an inverted bar.
+    /// The selection: a bar in the selection color.
     Selected,
     /// The selection while the actions pane is open.
     Marked,
@@ -78,7 +78,7 @@ pub fn app_row<'a>(
         RowState::Dimmed => (c.text_dim, c.text_muted),
         RowState::Normal | RowState::Marked => (c.text, c.text_muted),
     };
-    let accent = (!selected).then_some(c.highlight);
+    let matched = (!selected).then_some(c.highlight);
     // Dimmed rows stay quiet so the marked row stands out.
     let query = if state == RowState::Dimmed { "" } else { query };
     let title_width = if full {
@@ -94,7 +94,7 @@ pub fn app_row<'a>(
                 &app.name,
                 query,
                 true,
-                accent,
+                matched,
                 styles::chars_fitting(title_width)
             ))
             .size(styles::ROW_SIZE)
@@ -115,7 +115,7 @@ pub fn app_row<'a>(
                 generic,
                 query,
                 false,
-                accent,
+                matched,
                 styles::chars_fitting(styles::SECONDARY_WIDTH),
             ),
             _ => highlighted(
@@ -180,14 +180,14 @@ pub fn app_row<'a>(
 }
 
 /// `content` as spans, the characters matching `query` in semibold and,
-/// unless `accent` is `None`, in that color. `letters` also marks scattered
+/// unless `color` is `None`, in that color. `letters` also marks scattered
 /// letters, not just runs (see [`highlight`]). Text longer than `limit`
 /// characters is cut short with "…".
 pub fn highlighted<'a>(
     content: &str,
     query: &str,
     letters: bool,
-    accent: Option<Color>,
+    color: Option<Color>,
     limit: usize,
 ) -> Vec<Span<'a, (), iced::Font>> {
     let marked = highlight(content, query, letters);
@@ -202,7 +202,7 @@ pub fn highlighted<'a>(
         }
         let part = span(std::mem::take(run));
         spans.push(if is_marked {
-            part.font(fonts().semibold).color_maybe(accent)
+            part.font(fonts().semibold).color_maybe(color)
         } else {
             part
         });
