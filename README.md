@@ -92,7 +92,13 @@ command to `revmo`, then click the empty binding and press your keys.
 <details>
 <summary><b>Hyprland</b></summary>
 
-In `~/.config/hypr/hyprland.conf`:
+In `~/.config/hypr/hyprland.lua` (Hyprland 0.55 and later):
+
+```lua
+hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("revmo"))
+```
+
+Before 0.55, in `~/.config/hypr/hyprland.conf`:
 
 ```ini
 bind = SUPER, SPACE, exec, revmo
@@ -214,9 +220,9 @@ Accent=#b8bb26
 # A further step: the highlighted row while the actions pane is open, with
 # matched letters drawn on it.
 # SurfaceStrong=#2b2d2b
-# The window's outer border.
+# The window's outer border; none for no outline.
 # Frame=#3a3a35
-# Dividers between sections.
+# Dividers between sections; none for no dividers.
 # Border=#3a3a35
 # BorderStrong=#48473f
 # Secondary text, from most to least visible.
@@ -236,10 +242,38 @@ Accent=#b8bb26
 # Highlight=#b8bb26
 ```
 
-Colors are `#rrggbb`, or `#rrggbbaa` with transparency (except
-`Background`: the window itself is never see-through). Your theme
-replaces a bundled one with the same name, except Revmo Dark and Revmo
-Light.
+Colors can be written three ways:
+
+- `#rrggbb`: a solid color.
+- `#rrggbbaa`: a color mixed with what's under it in the window; the last
+  two digits go from `00` (invisible) to `ff` (solid). `Background` is
+  always solid. To see your desktop through Revmo, see
+  [Transparency](#transparency).
+- `none` (or `transparent`): not drawn, so the background shows in its
+  place. Any color but `Background` can be `none`: e.g. `Frame=none` for
+  no outline, `Border=none` for no dividers.
+
+Your theme replaces a bundled one with the same name, except Revmo Dark
+and Revmo Light.
+
+## Transparency
+
+Your compositor can make any window see-through, Revmo included. Its
+window class (X11) and app ID (Wayland) are both `revmo`, so one rule in
+your compositor's config does it:
+
+| Setup | Rule |
+|---|---|
+| Hyprland | In `hyprland.lua` (0.55+): `hl.window_rule({ match = { class = "^(revmo)$" }, opacity = "0.85" })`<br>In `hyprland.conf` (0.53–0.54): `windowrule = match:class ^(revmo)$, opacity 0.85` |
+| Sway | `for_window [app_id="revmo"] opacity 0.85` |
+| X11 with picom (i3, bspwm, …) | `rules = ( { match = "class_g = 'revmo'"; opacity = 0.85; } );`<br>(add the `{ … }` entry to your `rules` if you have them; before picom 12: `opacity-rule = [ "85:class_g = 'revmo'" ];`) |
+| KDE Plasma | System Settings → Window Management → Window Rules → Add New…; set Window class (application) to Exact Match `revmo`, then Add Property… → Active opacity and Inactive opacity (e.g. 85%) |
+| GNOME | Not built in; use a GNOME Shell extension that sets per-window opacity, matching `revmo` |
+
+The whole window fades, text included, so keep it readable: 0.85–0.95
+works well on most wallpapers. Blur behind the window is the
+compositor's too (Hyprland, KDE and picom can do it). Without a
+compositor (e.g. plain i3 with no picom), windows can't be see-through.
 
 ## Troubleshooting
 

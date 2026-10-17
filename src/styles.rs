@@ -33,15 +33,16 @@ pub const ICON_SIZE: f32 = 16.0;
 pub const TAG_WIDTH: f32 = 40.0;
 pub const SECONDARY_WIDTH: f32 = 190.0;
 pub const SHORTCUT_WIDTH: f32 = 44.0;
-pub const PANE_WIDTH: f32 = 210.0;
+pub const PANE_WIDTH: f32 = 250.0;
 /// Room for result titles: what the window has left after the other
 /// columns, the paddings, the frame and an 8px gap.
 pub const TITLE_WIDTH: f32 =
     WINDOW_WIDTH - 2.0 - 2.0 * PAD_X - TAG_WIDTH - SECONDARY_WIDTH - SHORTCUT_WIDTH - 8.0;
 /// The same with the actions pane open.
 pub const PANE_TITLE_WIDTH: f32 =
-    WINDOW_WIDTH - 2.0 - PANE_WIDTH - 1.0 - 2.0 * PAD_X - MARK_WIDTH - TAG_WIDTH - 8.0;
-/// The accent bar on the left of the highlighted row in the actions pane.
+    WINDOW_WIDTH - 2.0 - PANE_WIDTH - 1.0 - 2.0 * PAD_X - TAG_WIDTH - 8.0;
+/// The accent bar on the left of the highlighted row in the actions pane,
+/// inside the row's left padding.
 pub const MARK_WIDTH: f32 = 2.0;
 
 /// The font family in its three weights.

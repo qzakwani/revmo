@@ -145,7 +145,8 @@ impl Colors {
             background,
             surface: get("Surface", shade(0.03)),
             surface_strong: get("SurfaceStrong", shade(0.07)),
-            frame: get("Frame", border),
+            // Dividers left out still leave the outline.
+            frame: get("Frame", if border.a == 0.0 { shade(0.14) } else { border }),
             border,
             border_strong: get("BorderStrong", shade(0.21)),
             text,
@@ -414,13 +415,25 @@ pub fn parse(contents: &str, fallback_name: &str) -> Result<ThemeDef, String> {
         .group(GROUP)
         .ok_or_else(|| format!("no [{GROUP}] group"))?;
     for key in KEYS {
-        if let Some(value) = group.raw(key)
-            && parse_color(value).is_none()
-        {
-            return Err(format!("{key}={value} is not a #rrggbb color"));
+        let Some(value) = group.raw(key) else {
+            continue;
+        };
+        if is_none(value) && key == "Background" {
+            return Err(
+                "Background can't be none; your compositor makes windows see-through".into(),
+            );
+        }
+        if !is_none(value) && parse_color(value).is_none() {
+            return Err(format!("{key}={value} is not a #rrggbb color or none"));
         }
     }
-    let given = |key: &str| group.raw(key).and_then(parse_color);
+    let given = |key: &str| {
+        let value = group.raw(key)?;
+        match is_none(value) {
+            true => Some(Color::TRANSPARENT),
+            false => parse_color(value),
+        }
+    };
     let required = |key: &str| given(key).ok_or_else(|| format!("{key} is missing"));
     // The window is opaque, so a see-through background would only come out
     // darker; its alpha is ignored.
@@ -436,6 +449,13 @@ pub fn parse(contents: &str, fallback_name: &str) -> Result<ThemeDef, String> {
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| fallback_name.trim().to_string());
     Ok(ThemeDef::new(name, colors))
+}
+
+/// `none` or `transparent`: not drawn at all, so the background shows in
+/// its place. Any color but the background can be.
+fn is_none(value: &str) -> bool {
+    let value = value.trim();
+    value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("transparent")
 }
 
 /// `#rrggbb` or `#rrggbbaa`.
@@ -529,6 +549,22 @@ mod tests {
     }
 
     #[test]
+    fn none_leaves_a_fill_out() {
+        let theme = parse(
+            "[Theme]\nBackground=#000000\nText=#ffffff\nAccent=#ff0000\nBorder=None\nSurface=transparent\nSelection=none",
+            "x",
+        )
+        .unwrap();
+        let c = theme.colors();
+        assert_eq!(c.border, Color::TRANSPARENT);
+        assert_eq!(c.surface, Color::TRANSPARENT);
+        assert_eq!(c.selection, Color::TRANSPARENT);
+        // No dividers still leaves the outline.
+        assert_eq!(c.frame.a, 1.0);
+        assert_eq!(c.background, rgb(0x000000));
+    }
+
+    #[test]
     fn rejects_bad_files() {
         assert!(parse("[Theme]\nBackground=#000000\nText=#ffffff", "x").is_err());
         assert!(
@@ -540,6 +576,8 @@ mod tests {
         );
         let bad_optional = "[Theme]\nBackground=#000000\nText=#ffffff\nAccent=#ff0000\nBorder=red";
         assert!(parse(bad_optional, "x").is_err());
+        let no_background = "[Theme]\nBackground=none\nText=#ffffff\nAccent=#ff0000";
+        assert!(parse(no_background, "x").is_err());
         assert!(parse("Background=#000000", "x").is_err());
     }
 
