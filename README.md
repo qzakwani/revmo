@@ -204,13 +204,15 @@ Name=Mine
 # Required.
 Background=#1d2021
 Text=#ebdbb2
+# The prompt, key names, the focused field's outline and the run button.
 Accent=#b8bb26
 
 # Optional.
-# Footer and input fields.
-# Raised=#232625
-# The highlighted row while the actions pane is open.
-# SelectedSoft=#2b2d2b
+# A step off the background: the footer and input fields.
+# Surface=#232625
+# A further step: the highlighted row while the actions pane is open, with
+# matched letters drawn on it.
+# SurfaceStrong=#2b2d2b
 # The window's outer border.
 # Frame=#3a3a35
 # Dividers between sections.
@@ -222,7 +224,8 @@ Accent=#b8bb26
 # TextFaint=#676355
 # Text on the accent color.
 # OnAccent=#1d2021
-# The selected row, and the text on it.
+# The selected row, and the text on it. Also behind selected text in text
+# fields, when Text reads on it.
 # Selection=#b8bb26
 # OnSelection=#1d2021
 # Errors and confirmations.
@@ -268,4 +271,5 @@ cargo build --release
 ## Credits
 
 Revmo ships with the [IBM Plex Mono](https://github.com/IBM/plex) font.
-The bundled themes are ports of their authors' color schemes.
+The bundled themes are ports of their authors' color schemes, with a few
+colors swapped for others from the same scheme where they'd be hard to read.

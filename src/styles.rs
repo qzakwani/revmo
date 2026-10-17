@@ -171,12 +171,12 @@ pub fn frame(c: Colors) -> container::Style {
 pub fn footer(c: Colors) -> container::Style {
     container::Style {
         text_color: Some(c.text_muted),
-        background: fill(c.raised),
+        background: fill(c.surface),
         ..container::Style::default()
     }
 }
 
-/// The selected row: the full-width inverted bar.
+/// The selected row: a full-width bar in the selection color.
 pub fn selected(c: Colors) -> container::Style {
     container::Style {
         text_color: Some(c.on_selection),
@@ -188,7 +188,7 @@ pub fn selected(c: Colors) -> container::Style {
 /// The highlighted row in the list while the actions pane is open.
 pub fn soft_selected(c: Colors) -> container::Style {
     container::Style {
-        background: fill(c.selected_soft),
+        background: fill(c.surface_strong),
         ..container::Style::default()
     }
 }
@@ -226,21 +226,18 @@ pub fn search_input(c: Colors) -> text_input::Style {
         icon: c.text_muted,
         placeholder: c.text_muted,
         value: c.text,
-        selection: Color {
-            a: 0.35,
-            ..c.accent
-        },
+        selection: c.text_selection(),
     }
 }
 
-/// An argument field: a raised box, outlined in the accent when focused.
+/// An argument field: a box in the surface color, outlined in the accent when focused.
 pub fn field(c: Colors, status: text_input::Status) -> text_input::Style {
     let edge = match status {
         text_input::Status::Focused { .. } => c.accent,
         _ => c.border_strong,
     };
     text_input::Style {
-        background: Background::Color(c.raised),
+        background: Background::Color(c.surface),
         border: border::color(edge).width(1),
         ..search_input(c)
     }

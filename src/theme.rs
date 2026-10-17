@@ -34,10 +34,11 @@ const EXTENSION: &str = "theme";
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Colors {
     pub background: Color,
-    /// Footer and input fields.
-    pub raised: Color,
-    /// The highlighted row while the actions pane is open.
-    pub selected_soft: Color,
+    /// A step off the background: the footer and input fields.
+    pub surface: Color,
+    /// A further step: the highlighted row while the actions pane is open,
+    /// with matched letters drawn on it.
+    pub surface_strong: Color,
     /// The window's outer border.
     pub frame: Color,
     /// Dividers between sections.
@@ -47,10 +48,12 @@ pub struct Colors {
     pub text_dim: Color,
     pub text_muted: Color,
     pub text_faint: Color,
-    /// The prompt, matched letters and keys.
+    /// Text on the background (the prompt, key names), the focused field's
+    /// outline, the run button and the actions pane's marker bar.
     pub accent: Color,
     pub on_accent: Color,
-    /// The selected row.
+    /// The selected row, and selected text in text fields when the text
+    /// reads on it.
     pub selection: Color,
     pub on_selection: Color,
     pub danger: Color,
@@ -62,8 +65,8 @@ pub struct Colors {
 /// The file keys, in the order of [`Colors::to_array`].
 pub const KEYS: [&str; 17] = [
     "Background",
-    "Raised",
-    "SelectedSoft",
+    "Surface",
+    "SurfaceStrong",
     "Frame",
     "Border",
     "BorderStrong",
@@ -84,8 +87,8 @@ impl Colors {
     fn to_array(self) -> [Color; 17] {
         [
             self.background,
-            self.raised,
-            self.selected_soft,
+            self.surface,
+            self.surface_strong,
             self.frame,
             self.border,
             self.border_strong,
@@ -106,8 +109,8 @@ impl Colors {
     fn from_array(c: [Color; 17]) -> Self {
         Colors {
             background: c[0],
-            raised: c[1],
-            selected_soft: c[2],
+            surface: c[1],
+            surface_strong: c[2],
             frame: c[3],
             border: c[4],
             border_strong: c[5],
@@ -140,8 +143,8 @@ impl Colors {
         let selection = get("Selection", accent);
         Colors {
             background,
-            raised: get("Raised", shade(0.03)),
-            selected_soft: get("SelectedSoft", shade(0.07)),
+            surface: get("Surface", shade(0.03)),
+            surface_strong: get("SurfaceStrong", shade(0.07)),
             frame: get("Frame", border),
             border,
             border_strong: get("BorderStrong", shade(0.21)),
@@ -156,6 +159,21 @@ impl Colors {
             danger: get("Danger", if dark { rgb(0xe07b6a) } else { rgb(0xb8463a) }),
             success: get("Success", if dark { rgb(0x8fbf6a) } else { rgb(0x4d7c2f) }),
             highlight: get("Highlight", accent),
+        }
+    }
+}
+
+impl Colors {
+    /// Behind selected text in text fields: the selection when the text
+    /// reads on it, else a tint of it.
+    pub fn text_selection(self) -> Color {
+        if self.text.relative_contrast(self.selection) >= 4.5 {
+            self.selection
+        } else {
+            Color {
+                a: 0.35,
+                ..self.selection
+            }
         }
     }
 }
@@ -209,8 +227,8 @@ pub fn built_in() -> [ThemeDef; 2] {
             DEFAULT.into(),
             Colors {
                 background: rgb(0x0f1012),
-                raised: rgb(0x141518),
-                selected_soft: rgb(0x1e2024),
+                surface: rgb(0x141518),
+                surface_strong: rgb(0x1e2024),
                 frame: rgb(0x2c2e33),
                 border: rgb(0x2c2e33),
                 border_strong: rgb(0x3a3c42),
@@ -231,8 +249,8 @@ pub fn built_in() -> [ThemeDef; 2] {
             "Revmo Light".into(),
             Colors {
                 background: rgb(0xf7f6f2),
-                raised: rgb(0xedebe5),
-                selected_soft: rgb(0xe6e3db),
+                surface: rgb(0xedebe5),
+                surface_strong: rgb(0xe6e3db),
                 frame: rgb(0xc9c6bd),
                 border: rgb(0xe2e0d8),
                 border_strong: rgb(0xc9c6bd),
@@ -244,9 +262,9 @@ pub fn built_in() -> [ThemeDef; 2] {
                 on_accent: rgb(0xf7f6f2),
                 selection: rgb(0xf8a052),
                 on_selection: rgb(0x1b1206),
-                danger: rgb(0xb8463a),
+                danger: rgb(0xb4443a),
                 success: rgb(0x4d7c2f),
-                highlight: rgb(0xf8a052),
+                highlight: rgb(0x9c5100),
             },
         ),
     ]
@@ -570,32 +588,109 @@ mod tests {
         assert_eq!(by_name(&all, "Dracula"), Some(&mine));
     }
 
+    /// Checks a shipped theme fails because its author's palette has no
+    /// color that both passes and fits the role.
+    const EXEMPT: [(&str, &str); 20] = [
+        // No chromatic Latte color reaches 4.5 on a surface apart from Base.
+        ("Catppuccin Latte", "highlight marked"),
+        // Lotus has no red, orange or pink that passes.
+        ("Kanagawa Lotus", "danger"),
+        ("Kanagawa Lotus", "danger toast"),
+        // Red is 4.46 on Mantle, the darkest step off Base.
+        ("Catppuccin Latte", "danger toast"),
+        // Yellow is 4.05 on base02; only green, cyan and the grays pass.
+        ("Solarized Dark", "danger toast"),
+        // Solarized Light has no red, orange or magenta that passes.
+        ("Solarized Light", "danger"),
+        ("Solarized Light", "danger toast"),
+        // The body text itself is low contrast, so any visible surface
+        // behind it takes it under 4.5.
+        ("Solarized Dark", "text surface"),
+        ("Solarized Dark", "text marked"),
+        ("Solarized Dark", "search selection"),
+        ("Solarized Dark", "field selection"),
+        ("Solarized Dark", "text muted surface"),
+        ("Solarized Light", "text"),
+        ("Solarized Light", "text dim"),
+        ("Solarized Light", "text muted"),
+        ("Solarized Light", "text muted surface"),
+        ("Solarized Light", "text surface"),
+        ("Solarized Light", "text marked"),
+        ("Solarized Light", "search selection"),
+        ("Solarized Light", "field selection"),
+    ];
+
     #[test]
     fn shipped_themes_are_readable() {
+        // Bundled themes take every color from their palette, none derived.
+        let required = ["Background", "Text", "Accent"];
         for b in &BUNDLED {
             for (key, _) in b.other {
                 assert!(
-                    KEYS.contains(key) && !["Background", "Text", "Accent"].contains(key),
+                    KEYS.contains(key) && !required.contains(key),
                     "{}: {key} isn't an optional color",
                     b.name
                 );
             }
+            for key in KEYS.iter().filter(|k| !required.contains(k)) {
+                let count = b.other.iter().filter(|(k, _)| k == key).count();
+                assert_eq!(count, 1, "{}: {key} set {count} times", b.name);
+            }
         }
         let mut names: Vec<String> = Vec::new();
+        let mut failures: Vec<String> = Vec::new();
+        let mut exempted = EXEMPT.to_vec();
         for theme in built_in().into_iter().chain(bundled()) {
             assert!(!names.contains(&theme.name), "{} twice", theme.name);
             names.push(theme.name.clone());
             let c = theme.colors();
-            // Text on the fills revmo picks it for: WCAG AA for normal text,
-            // and for large or bold text on the accent. Background and text
-            // are the theme's.
-            for (fill, text, min) in [
-                (c.selection, c.on_selection, 4.5),
-                (c.accent, c.on_accent, 3.0),
+            let secondary = blend(c.selection, c.on_selection, 0.75);
+            let tint = c.text_selection();
+            let over = |base: Color| blend(base, Color { a: 1.0, ..tint }, tint.a);
+            // WCAG AA: 4.5 for text, 3 for secondary text and the marked
+            // row's bar. Faint text need only stay visible, and the two rows
+            // need only stand apart.
+            for (check, a, b, min) in [
+                ("text", c.text, c.background, 4.5),
+                ("text surface", c.text, c.surface, 4.5),
+                ("text marked", c.text, c.surface_strong, 4.5),
+                ("text dim", c.text_dim, c.background, 4.5),
+                ("text muted", c.text_muted, c.background, 3.0),
+                ("text muted surface", c.text_muted, c.surface, 3.0),
+                ("text faint", c.text_faint, c.background, 2.0),
+                ("accent", c.accent, c.background, 4.5),
+                ("mark bar", c.accent, c.surface_strong, 3.0),
+                ("on accent", c.on_accent, c.accent, 4.5),
+                ("highlight", c.highlight, c.background, 4.5),
+                ("highlight marked", c.highlight, c.surface_strong, 4.5),
+                ("danger", c.danger, c.background, 4.5),
+                ("danger toast", c.danger, c.surface, 4.5),
+                ("on selection", c.on_selection, c.selection, 4.5),
+                ("selection secondary", secondary, c.selection, 3.0),
+                ("search selection", c.text, over(c.background), 4.5),
+                ("field selection", c.text, over(c.surface), 4.5),
+                ("selection row", c.selection, c.background, 1.3),
+                ("selection vs marked", c.selection, c.surface_strong, 1.15),
             ] {
-                let contrast = fill.relative_contrast(text);
-                assert!(contrast >= min, "{}: contrast {contrast}", theme.name);
+                let contrast = a.relative_contrast(b);
+                let entry = (theme.name.as_str(), check);
+                let exempt = EXEMPT.contains(&entry);
+                exempted.retain(|e| *e != entry);
+                if contrast < min && !exempt {
+                    failures.push(format!("{}: {check} {contrast:.2}", theme.name));
+                }
+                if contrast >= min && exempt {
+                    failures.push(format!("{}: {check} passes, unexempt it", theme.name));
+                }
+            }
+            // Each step of text fainter than the last, or the same.
+            let steps = [c.text, c.text_dim, c.text_muted, c.text_faint]
+                .map(|t| t.relative_contrast(c.background));
+            if steps.windows(2).any(|w| w[1] > w[0]) {
+                failures.push(format!("{}: text steps out of order {steps:?}", theme.name));
             }
         }
+        assert!(exempted.is_empty(), "no such checks: {exempted:?}");
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 }

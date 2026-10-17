@@ -594,7 +594,13 @@ impl Revmo {
 
             Message::HelpPage => {
                 self.help = !self.help;
-                Task::none()
+                // The help page replaces the page underneath, fields and
+                // all, so their focus is gone when it closes.
+                match (self.help, self.args_key.is_some()) {
+                    (true, _) => Task::none(),
+                    (false, true) => focus("0"),
+                    (false, false) => focus(INPUT.clone()),
+                }
             }
 
             Message::ToastDone(id) => {
