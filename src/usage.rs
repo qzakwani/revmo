@@ -45,10 +45,9 @@ impl Usage {
     }
 
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir)?;
-        }
-        fs::write(path, self.serialize())
+        // To the file a symlink points to, so a dotfiles link stays a link.
+        let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        crate::files::write_atomic(&target, self.serialize().as_bytes())
     }
 
     /// One `score<TAB>last<TAB>key` line per app.

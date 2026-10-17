@@ -41,8 +41,8 @@ pub fn view<'a>(state: &'a Revmo, list: Element<'a, Message>) -> Element<'a, Mes
             } else {
                 (c.text, c.text_muted)
             };
-            // The selected row shows only ↲, like the main list.
-            let hint = codes.filter(|_| !is_selected);
+            // Kept on the selected row too, so it's clear the action takes arguments.
+            let hint = codes;
             let mut width = styles::PANE_WIDTH - 2.0 * styles::PAD_X;
             if let Some(hint) = &hint {
                 width -= 8.0 + hint.chars().count() as f32 * styles::ROW_SIZE * 0.6;

@@ -123,6 +123,13 @@ echo "Installing..."
 if pkill -u "$(id -u)" -x "$APP_NAME" 2>/dev/null; then
     echo "Closed the running revmo."
 fi
+# What earlier versions kept elsewhere is not carried over. 1.0 kept its
+# settings and app list under ~/.config and ~/.local/share whatever the
+# XDG variables said; their folders go too if that leaves them empty.
+# Before the folders below are created, which may be these same ones.
+rm -f "$CONFIG_DIR/revmo.conf" "$APP_DIR/apps.store" \
+    "$HOME/.config/$APP_NAME/revmo.conf" "$HOME/.local/share/$APP_NAME/apps.store"
+rmdir "$HOME/.config/$APP_NAME" "$HOME/.local/share/$APP_NAME" 2>/dev/null || true
 mkdir -p "$BIN_DIR" "$ICON_DIR" "$DESKTOP_FILE_DIR" "$APP_DIR"
 # Copied next to the old binary and renamed over it: the rename is atomic,
 # so a failed update never leaves a broken binary, and it works while
@@ -137,12 +144,6 @@ mv -f "$TMP_DIR/$ICON" "$ICON_DIR/$ICON"
 if [ "$(real_dir "$APP_DIR")" != "$(real_dir "$CONFIG_DIR")" ]; then
     rm -rf "$APP_DIR/themes"
 fi
-# What earlier versions kept elsewhere is not carried over. 1.0 kept its
-# settings and app list under ~/.config and ~/.local/share whatever the
-# XDG variables said; their folders go too if that leaves them empty.
-rm -f "$CONFIG_DIR/revmo.conf" "$APP_DIR/apps.store" \
-    "$HOME/.config/$APP_NAME/revmo.conf" "$HOME/.local/share/$APP_NAME/apps.store"
-rmdir "$HOME/.config/$APP_NAME" "$HOME/.local/share/$APP_NAME" 2>/dev/null || true
 # Pre-release 1.1 builds kept history and caches in the state and cache
 # folders, unless the XDG variables make those one of the two folders
 # (compared after resolving symlinks, so differently written paths to the

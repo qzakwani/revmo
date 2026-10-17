@@ -2,6 +2,7 @@
 //! the open window instead, so one hotkey toggles it.
 
 use std::env;
+use std::fs::File;
 use std::io::Write;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -27,6 +28,15 @@ pub fn socket_path(fallback_dir: &Path) -> PathBuf {
 /// Returns `None` if the socket can't be set up; revmo then runs without
 /// single-instance handling.
 pub fn acquire(path: &Path) -> Option<Instance> {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    // Held until this returns, so two revmos started at once can't both
+    // find no listener and both bind (the second removing the first's
+    // socket). Without the lock, this still works, just without that
+    // guarantee.
+    let lock = File::create(path.with_extension("lock"));
+    let _lock = lock.as_ref().ok().filter(|file| file.lock().is_ok());
     if let Ok(mut stream) = UnixStream::connect(path) {
         // A failed write still means someone is listening; don't open a
         // second window either way.
@@ -36,9 +46,6 @@ pub fn acquire(path: &Path) -> Option<Instance> {
     // Nobody answered: any file there is left over from an instance that
     // exited.
     let _ = std::fs::remove_file(path);
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
     match UnixListener::bind(path) {
         Ok(listener) => Some(Instance::Primary(listener)),
         Err(e) => {
