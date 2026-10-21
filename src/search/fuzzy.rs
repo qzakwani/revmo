@@ -1,4 +1,4 @@
-//! Fuzzy matching for the search box.
+//! Fuzzy matching, for apps.
 //!
 //! A query matches a text when its characters appear in order (not
 //! necessarily together). Matches score higher when they start words,

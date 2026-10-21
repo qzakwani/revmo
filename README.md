@@ -24,6 +24,9 @@ no menus to dig through, no mouse needed.
 - **Actions, files and links**: run an app's actions (e.g. *New Private Window*), or open files and URLs with it.
 - **Themes**: 24 to pick from (Catppuccin, Dracula, Gruvbox, Nord, Tokyo Night, …), or make your own.
 - **Your app list**: hide the apps and actions you never use.
+- **Clipboard history**: search what you've copied and copy it again, through the clipboard manager you already use.
+- **Modes**: type `?` to see what else the search box can do.
+- **A menu for your scripts**: `revmo menu` works like dmenu, in Revmo's window and theme.
 - **X11 and Wayland**.
 
 ## Install
@@ -120,6 +123,89 @@ bindsym $mod+space exec revmo
 You can also open Revmo from your application menu or by running `revmo`
 in a terminal. Press `Ctrl + H` inside it for the keys.
 
+## Modes
+
+Besides apps, the search box has modes. Type a mode's prefix first to
+switch to it, or type `?` to see them all:
+
+| Prefix | Mode |
+|---|---|
+| `;` | [Clipboard history](#clipboard-history) |
+
+In a mode, `Backspace` with nothing typed (or `Esc` on the `?` list)
+takes you back to your apps.
+
+### Clipboard history
+
+Type `;` to search what you've copied; `Enter` copies the entry again.
+
+Revmo shows the history, but doesn't keep it: a clipboard manager does
+that in the background. Install one and tell Revmo how to use it in
+`~/.config/revmo/config`, under `[Revmo]`:
+
+- `ClipboardList=`: a command that prints the history, one entry per
+  line.
+- `ClipboardPick=`: a command that gets the chosen line on its input and
+  copies that entry.
+
+Write them as you would in a terminal; pipes work.
+
+Some managers start each line with an ID that `ClipboardPick` needs but
+you don't need to see. Two more settings hide it:
+
+- `ClipboardColumns=`: the columns of each line to show and search, like
+  fzf's `--with-nth`: `2`, `1,3`, or `2..` for column 2 to the end. The
+  whole line is still what's picked.
+- `ClipboardSeparator=`: what separates the columns; a tab if not set.
+  Write a tab as `\t` and a space at either end as `\s` (e.g. `:\s`
+  for `: `).
+
+<details>
+<summary><b>cliphist (Wayland)</b></summary>
+
+Start it with your session (e.g. in your compositor's config), so it
+records what you copy:
+
+```sh
+wl-paste --watch cliphist store
+```
+
+Then in Revmo's config:
+
+```ini
+ClipboardList=cliphist list
+ClipboardPick=cliphist decode | wl-copy
+# Hide the ID at the start of each line.
+ClipboardColumns=2..
+```
+
+cliphist needs a compositor that lets programs watch the clipboard: KDE
+Plasma, Sway, Hyprland, niri and most wlroots-based ones do; GNOME on
+Wayland doesn't.
+
+</details>
+
+<details>
+<summary><b>greenclip (X11)</b></summary>
+
+Start `greenclip daemon` with your session, then in Revmo's config:
+
+```ini
+ClipboardList=greenclip print
+ClipboardPick=greenclip print "$(cat)"
+```
+
+</details>
+
+Any other clipboard manager works the same way, as long as it has a
+command to list the history and one to copy an entry back.
+
+> [!TIP]
+> Bind `revmo clipboard` to its own shortcut, e.g. `Super + V`, to open
+> straight into your clipboard history. Set it up the same way as the
+> shortcut for `revmo` above, with `revmo clipboard` as the command; on
+> Sway / i3: `bindsym $mod+v exec revmo clipboard`.
+
 ## Configuration
 
 Settings live in `~/.config/revmo/config`. The installer writes this one
@@ -143,9 +229,22 @@ remove a `#`:
 # Apps and actions to leave out, separated by ;
 # Run `revmo list-apps` to see their IDs (the last column).
 # Hidden=
+
+# Clipboard history (type ; in revmo, or run `revmo clipboard`) comes from
+# your clipboard manager. The command that prints the history, one entry
+# per line, e.g. cliphist list
+# ClipboardList=
+# The command that gets the picked line on its input and copies that
+# entry, e.g. cliphist decode | wl-copy
+# ClipboardPick=
+# Columns of each history line to show, e.g. 2.. to hide cliphist's IDs,
+# and what separates them (a tab if not set; write a space at an end as \s).
+# ClipboardColumns=
+# ClipboardSeparator=
 ```
 
-Changes apply the next time you open Revmo.
+Changes apply the next time you open Revmo. For the clipboard settings,
+see [Clipboard history](#clipboard-history).
 
 Revmo only ever changes the `Theme=` line (when you switch theme with
 `Ctrl + ←` / `Ctrl + →`) and leaves the rest as you wrote it, so the file
@@ -188,10 +287,56 @@ yourself, e.g. `Scale=1.5`. `Ctrl + H` shows the scale in use.
 | Command | What it does |
 |---|---|
 | `revmo` | Open Revmo (or close it if it's open) |
+| `revmo clipboard` | Open Revmo in [clipboard history](#clipboard-history) |
 | `revmo list-apps` | List your apps and their actions with their IDs, to [hide](#configuration) the ones you don't use |
 | `revmo list-fonts` | List the fonts installed on your computer, to [pick one](#configuration) for Revmo |
 | `revmo --help` | Show the commands |
 | `revmo --version` | Show the version |
+
+<details>
+<summary><b>For scripts: <code>revmo menu</code></b></summary>
+
+`revmo menu` works like dmenu: give it lines on its input, pick one in
+Revmo's window, and it prints that line.
+
+```sh
+printf 'shutdown\nreboot\nlock\n' | revmo menu -p "power:"
+```
+
+Typing filters the lines, which keep their order; lines that start with
+what you typed come first.
+
+| Option | What it does |
+|---|---|
+| `-p PROMPT` | Show `PROMPT` before the input |
+| `--with-nth COLS` | Show and search only these columns of each line, as in fzf: `2`, `1,3`, or `2..` for column 2 to the end. The whole line is still printed |
+| `--delimiter SEP` | What separates the columns; a tab if not given (`'\t'` works too) |
+
+For example, cliphist's history without its IDs:
+
+```sh
+cliphist list | revmo menu --with-nth 2.. | cliphist decode | wl-copy
+```
+
+| Key | What it does |
+|---|---|
+| `Enter` | Print the selected line (or what you typed, if nothing matches) |
+| `Shift + Enter` | Print what you typed |
+| `Ctrl + Enter` | Print the selected line and keep picking |
+| `Tab` | Copy the selected line into the input |
+| `Esc` | Close without printing |
+
+It exits with 1 if nothing was printed, so a script can stop there:
+
+```sh
+choice=$(ls ~/notes | revmo menu -p "note:") || exit
+xdg-open ~/notes/"$choice"
+```
+
+A menu doesn't close an open Revmo, and running `revmo` doesn't close a
+menu.
+
+</details>
 
 ## Themes
 
