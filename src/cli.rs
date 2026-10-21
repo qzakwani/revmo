@@ -1,8 +1,10 @@
-//! The command line. `revmo` alone opens the launcher; the commands print
-//! what the config file's settings take and exit without opening a window.
+//! The command line. `revmo` alone opens the launcher, `menu` and
+//! `clipboard` open it in a mode, and the list commands print what the
+//! config file's settings take and exit without opening a window.
 
 use std::io::{self, Write};
 
+use crate::modes::columns::Columns;
 use crate::parser::{self, App};
 use crate::{check_font, config, styles};
 
@@ -12,17 +14,42 @@ Usage: revmo [COMMAND]
 With no command, opens the launcher (or closes it if it's open).
 
 Commands:
-  list-apps      List apps and their actions, with the IDs Hidden= takes
-  list-fonts     List installed font families, as Font= takes them
+  clipboard          Open in clipboard mode, like typing \";\" in the launcher;
+                     needs ClipboardList= and ClipboardPick= in the config
+  menu [OPTIONS]     Pick one of the lines read from stdin and print it, like
+                     dmenu; exits 1 if closed without picking
+  list-apps          List apps and their actions, with the IDs Hidden= takes
+  list-fonts         List installed font families, as Font= takes them
+
+Menu options:
+  -p PROMPT          Show PROMPT before the input
+  --with-nth COLS    Show and search only these columns of each line, like
+                     fzf: 2, 1,3 or 2.. (2 to the end); the whole line is
+                     still printed
+  --delimiter SEP    What separates the columns (default: a tab, \\t)
+
+In menu:
+  enter              Print the selected line (or what's typed, if nothing
+                     matches)
+  shift+enter        Print what's typed
+  ctrl+enter         Print the selected line and keep picking
+  tab                Copy the selected line into the input
 
 Options:
-  -h, --help     Show this help
-  -V, --version  Show the version
+  -h, --help         Show this help
+  -V, --version      Show the version
 ";
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     Open,
+    Clipboard,
+    /// `revmo menu`, with the prompt shown before the input and the
+    /// columns of the lines to show.
+    Menu {
+        prompt: Option<String>,
+        columns: Option<Columns>,
+    },
     ListApps,
     ListFonts,
     Help,
@@ -36,6 +63,8 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
         return Ok(Command::Open);
     };
     let command = match first.as_str() {
+        "menu" => return parse_menu(args),
+        "clipboard" => Command::Clipboard,
         "list-apps" => Command::ListApps,
         "list-fonts" => Command::ListFonts,
         "-h" | "--help" => Command::Help,
@@ -48,10 +77,52 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
     }
 }
 
+/// `menu`'s options, from the arguments after it. The long ones take
+/// their value as the next argument or after `=`, as in fzf.
+fn parse_menu(mut args: impl Iterator<Item = String>) -> Result<Command, String> {
+    let (mut prompt, mut with_nth, mut delimiter) = (None, None, None);
+    while let Some(arg) = args.next() {
+        let (name, inline) = match arg.split_once('=') {
+            Some((name, value)) if name.starts_with("--") => (name, Some(value.to_string())),
+            _ => (arg.as_str(), None),
+        };
+        let slot = match name {
+            "-p" if inline.is_none() => &mut prompt,
+            "--with-nth" => &mut with_nth,
+            "--delimiter" => &mut delimiter,
+            _ => return Err(format!("menu: unknown option \"{arg}\"")),
+        };
+        match inline.or_else(|| args.next()) {
+            Some(value) => *slot = Some(value),
+            None => return Err(format!("menu: {name} needs a value after it")),
+        }
+    }
+    // Written as in fzf: `--delimiter '\t'` is a tab.
+    let delimiter = delimiter.map(|d| d.replace("\\t", "\t"));
+    let columns = match with_nth {
+        Some(spec) => Some(
+            Columns::parse(&spec, delimiter.as_deref())
+                .map_err(|e| format!("menu: --with-nth: {e}"))?,
+        ),
+        None => None,
+    };
+    Ok(Command::Menu { prompt, columns })
+}
+
+impl Command {
+    /// Whether this opens revmo's window rather than printing something.
+    pub fn opens_window(&self) -> bool {
+        matches!(
+            self,
+            Command::Open | Command::Clipboard | Command::Menu { .. }
+        )
+    }
+}
+
 /// Prints what `command` asks for.
 pub fn run(command: Command) {
     let out = match command {
-        Command::Open => return,
+        Command::Open | Command::Clipboard | Command::Menu { .. } => return,
         Command::Help => USAGE.to_string(),
         Command::Version => format!("revmo {}\n", env!("CARGO_PKG_VERSION")),
         Command::ListApps => {
@@ -236,10 +307,53 @@ mod tests {
         assert_eq!(args(&["--help"]), Ok(Command::Help));
         assert_eq!(args(&["-V"]), Ok(Command::Version));
         assert_eq!(args(&["--version"]), Ok(Command::Version));
+        assert_eq!(args(&["clipboard"]), Ok(Command::Clipboard));
         assert_eq!(args(&["list"]), Err("unknown command \"list\"".to_string()));
         assert_eq!(
             args(&["list-apps", "x"]),
             Err("list-apps takes no arguments, got \"x\"".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_menu_options() {
+        let menu = |prompt: Option<&str>, columns: Option<Columns>| {
+            Ok(Command::Menu {
+                prompt: prompt.map(Into::into),
+                columns,
+            })
+        };
+        assert_eq!(args(&["menu"]), menu(None, None));
+        assert_eq!(args(&["menu", "-p", "run:"]), menu(Some("run:"), None));
+        assert_eq!(
+            args(&["menu", "-p"]),
+            Err("menu: -p needs a value after it".to_string())
+        );
+        let cols = |spec, sep| Some(Columns::parse(spec, sep).unwrap());
+        assert_eq!(
+            args(&["menu", "--with-nth", "2.."]),
+            menu(None, cols("2..", None))
+        );
+        assert_eq!(
+            args(&["menu", "--with-nth=1,3", "--delimiter=: ", "-p", "x"]),
+            menu(Some("x"), cols("1,3", Some(": ")))
+        );
+        // The order doesn't matter, and \t is a tab, as in fzf.
+        assert_eq!(
+            args(&["menu", "--delimiter", "\\t", "--with-nth", "2"]),
+            menu(None, cols("2", None))
+        );
+        assert_eq!(
+            args(&["menu", "--with-nth", "0"]),
+            Err("menu: --with-nth: \"0\" isn't a list of columns like 2, 1,3 or 2..".to_string())
+        );
+        assert_eq!(
+            args(&["menu", "-l", "10"]),
+            Err("menu: unknown option \"-l\"".to_string())
+        );
+        assert_eq!(
+            args(&["clipboard", "x"]),
+            Err("clipboard takes no arguments, got \"x\"".to_string())
         );
     }
 

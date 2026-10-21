@@ -9,10 +9,15 @@
 //! Font=IBM Plex Mono
 //! Scale=1.5
 //! Hidden=org.gnome.Logs.desktop;firefox.desktop/new-private-window;
+//! ClipboardList=cliphist list
+//! ClipboardPick=cliphist decode | wl-copy
+//! ClipboardColumns=2..
 //! ```
 //!
 //! An empty `Font` uses the bundled IBM Plex Mono; an empty `Scale` picks
-//! one from the monitor (see `revmo::display`). Mistakes are reported as
+//! one from the monitor (see `revmo::display`). The clipboard commands come
+//! from whichever clipboard manager the user runs; revmo has none of its
+//! own (see `modes::clipboard`). Mistakes are reported as
 //! [`Loaded::problems`] and the setting keeps its default.
 
 use std::fs;
@@ -21,13 +26,23 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use crate::HOME_DIR;
+use crate::modes::columns::Columns;
 use crate::theme;
 use revmo::files::write_atomic;
 use revmo::xdg::base_dirs::config_home;
 use revmo::xdg::keyfile::{KeyFile, escape};
 
 const GROUP: &str = "Revmo";
-const KEYS: [&str; 4] = ["Theme", "Font", "Scale", "Hidden"];
+const KEYS: [&str; 8] = [
+    "Theme",
+    "Font",
+    "Scale",
+    "Hidden",
+    "ClipboardList",
+    "ClipboardPick",
+    "ClipboardColumns",
+    "ClipboardSeparator",
+];
 
 static CONFIG_DIR: LazyLock<PathBuf> =
     LazyLock::new(|| config_home(Path::new(HOME_DIR.as_str())).join("revmo"));
@@ -43,6 +58,15 @@ pub struct Config {
     /// Desktop file IDs of apps to leave out of the list (with their
     /// actions); set by hand, revmo only reads it.
     pub hidden: Vec<String>,
+    /// Command that prints the clipboard history, one entry per line;
+    /// empty if not set.
+    pub clipboard_list: String,
+    /// Command that gets the picked entry's line on stdin and copies it;
+    /// empty if not set.
+    pub clipboard_pick: String,
+    /// Which columns of the history's lines to show (`ClipboardColumns=`,
+    /// split at `ClipboardSeparator=`); whole lines if `None`.
+    pub clipboard_columns: Option<Columns>,
 }
 
 impl Default for Config {
@@ -52,6 +76,9 @@ impl Default for Config {
             font: String::new(),
             scale: None,
             hidden: Vec::new(),
+            clipboard_list: String::new(),
+            clipboard_pick: String::new(),
+            clipboard_columns: None,
         }
     }
 }
@@ -232,6 +259,18 @@ fn parse(text: &str) -> Loaded {
         .map(|id| id.trim().to_string())
         .filter(|id| !id.is_empty())
         .collect();
+    let command = |key| group.string(key).unwrap_or_default().trim().to_string();
+    config.clipboard_list = command("ClipboardList");
+    config.clipboard_pick = command("ClipboardPick");
+    // Not trimmed: spaces can be part of it (written \s at the ends).
+    let separator = group.string("ClipboardSeparator").filter(|s| !s.is_empty());
+    let columns = group.string("ClipboardColumns");
+    if let Some(spec) = columns.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        match Columns::parse(spec, separator.as_deref()) {
+            Ok(columns) => config.clipboard_columns = Some(columns),
+            Err(e) => problems.push(format!("ClipboardColumns: {e}; showing whole lines")),
+        }
+    }
     Loaded {
         config,
         problems,
@@ -353,7 +392,7 @@ mod tests {
     #[test]
     fn reads_every_setting() {
         let loaded = parse(
-            "[Revmo]\nTheme=Dracula\nFont=IBM Plex Mono\nScale=1.5\nHidden=a.desktop;b.desktop/new\\;window;\n",
+            "[Revmo]\nTheme=Dracula\nFont=IBM Plex Mono\nScale=1.5\nHidden=a.desktop;b.desktop/new\\;window;\nClipboardList=cliphist list\nClipboardPick=cliphist decode | wl-copy\nClipboardColumns=2..\nClipboardSeparator=:\\s\n",
         );
         assert_eq!(
             loaded.config,
@@ -362,6 +401,9 @@ mod tests {
                 font: "IBM Plex Mono".into(),
                 scale: Some(1.5),
                 hidden: vec!["a.desktop".into(), "b.desktop/new;window".into()],
+                clipboard_list: "cliphist list".into(),
+                clipboard_pick: "cliphist decode | wl-copy".into(),
+                clipboard_columns: Some(Columns::parse("2..", Some(": ")).unwrap()),
             }
         );
         assert!(loaded.problems.is_empty());
@@ -448,6 +490,23 @@ mod tests {
     }
 
     #[test]
+    fn bad_columns_are_reported_and_ignored() {
+        let loaded = parse("[Revmo]\nClipboardColumns=two\n");
+        assert_eq!(loaded.config.clipboard_columns, None);
+        assert_eq!(
+            loaded.problems,
+            [
+                "ClipboardColumns: \"two\" isn't a list of columns like 2, 1,3 or 2..; showing whole lines"
+            ]
+        );
+        // The separator defaults to a tab.
+        assert_eq!(
+            config("[Revmo]\nClipboardColumns=2\n").clipboard_columns,
+            Some(Columns::parse("2", None).unwrap())
+        );
+    }
+
+    #[test]
     fn parses_scale() {
         let scale = |s: &str| parse_scale(s).0;
         assert_eq!(scale("1.25"), Some(1.25));
@@ -528,6 +587,34 @@ mod tests {
         assert_eq!(loaded.config, Config::default());
         assert!(loaded.problems[0].starts_with("can't read"));
         assert!(loaded.unsaveable.is_some());
+    }
+
+    #[test]
+    fn the_installers_starter_config_reads_cleanly() {
+        let script = include_str!("../scripts/install.sh");
+        let start = script.find("cat <<'EOF' > \"$CONFIG_FILE\"\n").unwrap();
+        let body = &script[start..];
+        let body = &body[body.find('\n').unwrap() + 1..];
+        let template = &body[..body.find("\nEOF\n").unwrap()];
+        assert_eq!(parse(template), Loaded::default());
+        // Every setting in it is one revmo knows, uncommented too.
+        let uncommented =
+            template.replace("\n# ClipboardList=\n", "\nClipboardList=cliphist list\n");
+        let uncommented = uncommented.replace(
+            "\n# ClipboardPick=",
+            "\nClipboardPick=cliphist decode | wl-copy",
+        );
+        let uncommented = uncommented
+            .replace("\n# ClipboardColumns=", "\nClipboardColumns=2..")
+            .replace("\n# ClipboardSeparator=", "\nClipboardSeparator=\\t");
+        let loaded = parse(&uncommented);
+        assert_eq!(loaded.problems, Vec::<String>::new());
+        assert_eq!(
+            loaded.config.clipboard_columns,
+            Some(Columns::parse("2..", None).unwrap())
+        );
+        assert_eq!(loaded.config.clipboard_list, "cliphist list");
+        assert_eq!(loaded.config.clipboard_pick, "cliphist decode | wl-copy");
     }
 
     #[test]

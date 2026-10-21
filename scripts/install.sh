@@ -179,6 +179,18 @@ if [ ! -e "$CONFIG_FILE" ]; then
 # Apps and actions to leave out, separated by ;
 # Run `revmo list-apps` to see their IDs (the last column).
 # Hidden=
+
+# Clipboard history (type ; in revmo, or run `revmo clipboard`) comes from
+# your clipboard manager. The command that prints the history, one entry
+# per line, e.g. cliphist list
+# ClipboardList=
+# The command that gets the picked line on its input and copies that
+# entry, e.g. cliphist decode | wl-copy
+# ClipboardPick=
+# Columns of each history line to show, e.g. 2.. to hide cliphist's IDs,
+# and what separates them (a tab if not set; write a space at an end as \s).
+# ClipboardColumns=
+# ClipboardSeparator=
 EOF
 fi
 

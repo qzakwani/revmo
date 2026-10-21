@@ -41,6 +41,8 @@ pub const TITLE_WIDTH: f32 =
 /// The same with the actions pane open.
 pub const PANE_TITLE_WIDTH: f32 =
     WINDOW_WIDTH - 2.0 - PANE_WIDTH - 1.0 - 2.0 * PAD_X - TAG_WIDTH - 8.0;
+/// Room for a menu line: everything but the shortcut column.
+pub const LINE_WIDTH: f32 = WINDOW_WIDTH - 2.0 - 2.0 * PAD_X - SHORTCUT_WIDTH - 8.0;
 /// The accent bar on the left of the highlighted row in the actions pane,
 /// inside the row's left padding.
 pub const MARK_WIDTH: f32 = 2.0;

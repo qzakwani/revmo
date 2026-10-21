@@ -6,21 +6,26 @@ mod cli;
 mod config;
 mod help_page;
 mod helpers;
+mod modes;
 mod parser;
 mod store;
 mod styles;
 mod theme;
 
+use std::io::IsTerminal;
 use std::sync::LazyLock;
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use std::{env, thread, vec};
 
 use iced::keyboard::key::{Code, Key, Named, Physical};
-use iced::widget::operation::{focus, focus_next, focus_previous};
-use iced::widget::{column, container, row, text, text_input};
+use iced::widget::operation::{focus, focus_next, focus_previous, move_cursor_to_end};
+use iced::widget::{Space, column, container, row, text, text_input};
 use iced::window::settings::PlatformSpecific;
 use iced::{Alignment, Event, Padding, Settings, event, keyboard, widget, window};
 use iced::{Element, Fill, Subscription, Task};
+use modes::menu::{self, Menu};
+use modes::{clipboard, list};
 use parser::App;
 use revmo::xdg::exec::FieldCode;
 use revmo::{instance, search, usage, xdg};
@@ -90,10 +95,15 @@ fn main() -> iced::Result {
         eprintln!("revmo: $HOME is not set");
         std::process::exit(1);
     }
-    if !matches!(command, cli::Command::Open) {
+    if !command.opens_window() {
         // Before the instance check, so a running launcher stays open.
         cli::run(command);
         return Ok(());
+    }
+    let is_menu = matches!(command, cli::Command::Menu { .. });
+    if is_menu && std::io::stdin().is_terminal() {
+        eprintln!("revmo: menu picks from the lines on stdin, e.g. `ls | revmo menu`");
+        std::process::exit(2);
     }
     // Without one, iced fails to start with a panic and a backtrace hint.
     let has_display = ["WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY"]
@@ -104,12 +114,16 @@ fn main() -> iced::Result {
         std::process::exit(1);
     }
 
-    match instance::acquire(&instance::socket_path(&APP_DIR)) {
-        Some(instance::Instance::Secondary) => return Ok(()),
-        Some(instance::Instance::Primary(listener)) => {
-            *INSTANCE_SOCKET.lock().unwrap() = Some(listener);
+    // A menu belongs to the script that started it: it neither closes an
+    // open launcher nor is closed by the next `revmo`.
+    if !is_menu {
+        match instance::acquire(&instance::socket_path(&APP_DIR)) {
+            Some(instance::Instance::Secondary) => return Ok(()),
+            Some(instance::Instance::Primary(listener)) => {
+                *INSTANCE_SOCKET.lock().unwrap() = Some(listener);
+            }
+            None => {}
         }
-        None => {}
     }
 
     let loaded = config::Config::load();
@@ -141,7 +155,7 @@ fn main() -> iced::Result {
         ..window::Settings::default()
     };
     let mut app = iced::application(
-        move || Revmo::new(loaded.clone(), scale, font_problem.clone()),
+        move || Revmo::new(loaded.clone(), scale, font_problem.clone(), command.clone()),
         Revmo::update,
         Revmo::view,
     )
@@ -159,7 +173,11 @@ fn main() -> iced::Result {
     for font in styles::BUNDLED_FONTS {
         app = app.font(font);
     }
-    app.run()
+    app.run()?;
+    if is_menu {
+        std::process::exit(menu::EXIT_CODE.load(Ordering::Relaxed));
+    }
+    Ok(())
 }
 
 struct Revmo {
@@ -205,6 +223,13 @@ struct Revmo {
     was_focused: bool,
     /// When a held arrow key last moved the selection (see `REPEAT_GAP`).
     last_repeat: Option<Instant>,
+    /// The line menu shown instead of the apps, in `revmo menu` and
+    /// clipboard mode.
+    menu: Option<Menu>,
+    /// The modifier keys held, which change what enter does in a menu.
+    modifiers: keyboard::Modifiers,
+    /// The selected mode while the modes screen is open (see `list`).
+    modes: Option<usize>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -242,6 +267,19 @@ enum Message {
     BackwardTheme,
     WindowFocused,
     WindowUnfocused,
+    ModifiersChanged(keyboard::Modifiers),
+    /// Lines read from stdin for `revmo menu`; `true` once it's all read.
+    MenuLines(Vec<menu::Line>, bool),
+    /// Enter in a menu, with the modifier keys held then.
+    MenuEnter(keyboard::Modifiers),
+    /// A click on the menu line with this index.
+    MenuPress(usize),
+    /// A click on the mode at this position on the modes screen.
+    ModePress(usize),
+    /// Tab: copies the selected menu line into the input.
+    Complete,
+    ClipboardListed(Result<Vec<String>, String>),
+    ClipboardPicked(Result<(), String>),
 }
 
 impl Revmo {
@@ -251,6 +289,7 @@ impl Revmo {
         mut loaded: config::Loaded,
         scale: f32,
         font_problem: Option<String>,
+        command: cli::Command,
     ) -> (Self, Task<Message>) {
         let (theme_files, scanning) = match theme::cached() {
             Some((fingerprint, files)) => (files, Some(fingerprint)),
@@ -271,14 +310,31 @@ impl Revmo {
             }
             None => revmo.report(),
         };
+        // A menu has its lines; apps aren't needed.
+        if let cli::Command::Menu { prompt, columns } = command {
+            revmo.menu = Some(Menu::new(menu::Kind::Stdin, prompt, columns));
+            revmo.is_loading = false;
+            return (revmo, Task::batch([themes_task, focus(INPUT.clone())]));
+        }
+        let mode = match command {
+            cli::Command::Clipboard => Task::batch([
+                revmo.update(Message::SearchChanged(clipboard::PREFIX.into())),
+                // The apps may take a while to load, and with them the focus.
+                focus(INPUT.clone()),
+            ]),
+            _ => Task::none(),
+        };
         let Some((fingerprint, apps)) = App::cached() else {
             // First run or unreadable cache: show "Loading" until scanned.
-            return (revmo, Task::batch([themes_task, scan_if_changed(None)]));
+            return (
+                revmo,
+                Task::batch([mode, themes_task, scan_if_changed(None)]),
+            );
         };
         let shown = revmo.update(Message::AppsLoaded(apps));
         (
             revmo,
-            Task::batch([shown, themes_task, scan_if_changed(Some(fingerprint))]),
+            Task::batch([mode, shown, themes_task, scan_if_changed(Some(fingerprint))]),
         )
     }
 
@@ -313,6 +369,9 @@ impl Revmo {
             is_loading: true,
             was_focused: false,
             last_repeat: None,
+            menu: None,
+            modifiers: keyboard::Modifiers::default(),
+            modes: None,
         };
         revmo.apply_theme();
         revmo
@@ -464,6 +523,82 @@ impl Revmo {
         self.exec_args.clear();
     }
 
+    /// Switches to the mode with `prefix`, searching for `query`. The
+    /// prefix becomes the mode's sign before the input.
+    fn enter_mode(&mut self, prefix: char, query: &str) -> Task<Message> {
+        self.modes = None;
+        self.close_args();
+        match prefix {
+            clipboard::PREFIX => {
+                let mut m = Menu::new(
+                    menu::Kind::Clipboard,
+                    Some(prefix.to_string()),
+                    self.config.clipboard_columns.clone(),
+                );
+                m.set_query(query);
+                self.menu = Some(m);
+                self.search = query.to_string();
+                let command = self.config.clipboard_list.clone();
+                Task::perform(
+                    helpers::on_thread(move || clipboard::list(&command)),
+                    Message::ClipboardListed,
+                )
+            }
+            _ => Task::none(),
+        }
+    }
+
+    /// Back to the apps from a mode or the modes screen.
+    fn leave_mode(&mut self) {
+        self.menu = None;
+        self.modes = None;
+        self.search.clear();
+        self.filter();
+    }
+
+    /// Enter in a menu, with `modifiers` held. `revmo menu` prints the
+    /// selected line, or what's typed if nothing matches or with shift;
+    /// with ctrl it prints the line and stays open. Clipboard mode copies
+    /// the selected entry.
+    fn pick_line(&mut self, modifiers: keyboard::Modifiers) -> Task<Message> {
+        let typed = self.search.clone();
+        let (shift, ctrl) = (modifiers.shift(), modifiers.command());
+        let Some(menu) = &mut self.menu else {
+            return Task::none();
+        };
+        let selected = menu.selected_line().cloned();
+        if menu.kind == menu::Kind::Clipboard {
+            let Some(line) = selected.filter(|_| !menu.picking) else {
+                return Task::none();
+            };
+            menu.picking = true;
+            let command = self.config.clipboard_pick.clone();
+            let line = line.text().to_string();
+            return Task::perform(
+                helpers::on_thread(move || clipboard::pick(&command, &line)),
+                Message::ClipboardPicked,
+            );
+        }
+        match (selected, shift, ctrl) {
+            (_, true, _) | (None, _, false) if !typed.is_empty() => {
+                menu::print(typed.as_bytes());
+                Task::done(Message::Exit)
+            }
+            (Some(line), false, true) => {
+                if !menu::print(line.bytes()) {
+                    return Task::done(Message::Exit);
+                }
+                menu.mark_picked();
+                Task::none()
+            }
+            (Some(line), false, false) => {
+                menu::print(line.bytes());
+                Task::done(Message::Exit)
+            }
+            _ => Task::none(),
+        }
+    }
+
     fn theme(&self) -> iced::Theme {
         self.iced_theme.clone()
     }
@@ -528,12 +663,121 @@ impl Revmo {
             }
 
             Message::SearchChanged(input) => {
-                self.search = input;
                 self.pane = None;
-                self.filter();
+                let kind = self.menu.as_ref().map(|m| m.kind);
+                // Backspace with nothing typed leaves a mode or the modes
+                // screen: the input reports it as its empty text, unchanged.
+                let in_mode = kind == Some(menu::Kind::Clipboard) || self.modes.is_some();
+                if in_mode && input.is_empty() && self.search.is_empty() {
+                    self.leave_mode();
+                    return Task::none();
+                }
+                if kind.is_none() {
+                    if self.modes.is_none()
+                        && let Some(rest) = input.strip_prefix(list::PREFIX)
+                    {
+                        self.modes = Some(0);
+                        self.search.clear();
+                        self.close_args();
+                        // Typed on along with the `?`, e.g. pasted.
+                        return match rest.is_empty() {
+                            true => Task::none(),
+                            false => self.update(Message::SearchChanged(rest.to_string())),
+                        };
+                    }
+                    if let Some((mode, query)) = list::split(&input) {
+                        return self.enter_mode(mode.prefix, query);
+                    }
+                    // Anything else typed on the modes screen searches apps.
+                    self.modes = None;
+                }
+                self.search = input;
+                match &mut self.menu {
+                    Some(m) => m.set_query(&self.search),
+                    None => self.filter(),
+                }
                 Task::none()
             }
 
+            Message::MenuLines(lines, done) => {
+                if let Some(m) = self.menu.as_mut().filter(|m| m.kind == menu::Kind::Stdin) {
+                    m.push(lines);
+                    m.loading = !done;
+                }
+                Task::none()
+            }
+
+            Message::ClipboardListed(result) => {
+                // Clipboard mode may have been left since.
+                if let Some(m) = self
+                    .menu
+                    .as_mut()
+                    .filter(|m| m.kind == menu::Kind::Clipboard)
+                {
+                    m.loading = false;
+                    match result {
+                        Ok(lines) => {
+                            m.error = None;
+                            m.set_lines(lines);
+                        }
+                        Err(e) => m.error = Some(e),
+                    }
+                }
+                Task::none()
+            }
+
+            Message::ClipboardPicked(Ok(())) => Task::done(Message::Exit),
+            Message::ClipboardPicked(Err(e)) => {
+                if let Some(m) = &mut self.menu {
+                    m.picking = false;
+                }
+                // The pick may have been a click, which took the focus.
+                Task::batch([self.notify(e, ToastLevel::Error), focus(INPUT.clone())])
+            }
+
+            Message::MenuEnter(modifiers) => self.pick_line(modifiers),
+
+            Message::ModePress(i) => {
+                let Some(mode) = list::MODES.get(i).filter(|_| self.modes.is_some()) else {
+                    return Task::none();
+                };
+                // Clicking took the focus from the input.
+                Task::batch([self.enter_mode(mode.prefix, ""), focus(INPUT.clone())])
+            }
+
+            Message::MenuPress(line) => {
+                // The list may have changed under the pointer.
+                if !self.menu.as_mut().is_some_and(|m| m.select_line(line)) {
+                    return Task::none();
+                }
+                // Shift picks what's typed; a click is about the line.
+                let modifiers = self.modifiers - keyboard::Modifiers::SHIFT;
+                // Clicking took the focus from the input.
+                Task::batch([self.pick_line(modifiers), focus(INPUT.clone())])
+            }
+
+            Message::Complete => {
+                let Some(m) = self.menu.as_mut().filter(|m| m.kind == menu::Kind::Stdin) else {
+                    return Task::none();
+                };
+                // What's shown, as that's what the search looks at.
+                let Some(line) = m.selected_line().map(|l| l.shown().to_string()) else {
+                    return Task::none();
+                };
+                m.set_query(&line);
+                self.search = line;
+                move_cursor_to_end(INPUT.clone())
+            }
+
+            Message::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers;
+                Task::none()
+            }
+
+            Message::RunIndex if self.modes.is_some() => {
+                let i = self.modes.unwrap_or_default();
+                self.enter_mode(list::MODES[i].prefix, "")
+            }
             Message::RunIndex => match (self.pane.is_some(), self.selected_pane_item()) {
                 (true, Some(i)) => self.run(&self.apps[i].key.clone(), &[]),
                 (false, _) => match self.selected_app() {
@@ -544,6 +788,14 @@ impl Revmo {
             },
 
             Message::SelectDown => {
+                if let Some(m) = &mut self.menu {
+                    m.select_down();
+                    return Task::none();
+                }
+                if let Some(i) = self.modes {
+                    self.modes = Some((i + 1).min(list::MODES.len() - 1));
+                    return Task::none();
+                }
                 if self.args_key.is_some() {
                     return focus_next();
                 }
@@ -557,6 +809,14 @@ impl Revmo {
                 Task::none()
             }
             Message::SelectUp => {
+                if let Some(m) = &mut self.menu {
+                    m.select_up();
+                    return Task::none();
+                }
+                if let Some(i) = self.modes {
+                    self.modes = Some(i.saturating_sub(1));
+                    return Task::none();
+                }
                 if self.args_key.is_some() {
                     return focus_previous();
                 }
@@ -593,7 +853,12 @@ impl Revmo {
             }
 
             Message::Forward => {
-                if self.args_key.is_some() || self.selected_app().is_none() {
+                // Menu lines and modes have no actions.
+                if self.menu.is_some()
+                    || self.modes.is_some()
+                    || self.args_key.is_some()
+                    || self.selected_app().is_none()
+                {
                     return Task::none();
                 }
                 let Some(i) = self.selected_pane_item() else {
@@ -613,7 +878,9 @@ impl Revmo {
             }
 
             Message::Back => {
-                if self.args_key.is_some() {
+                if self.modes.is_some() {
+                    self.leave_mode();
+                } else if self.args_key.is_some() {
                     self.close_args();
                 } else {
                     self.pane = None;
@@ -622,7 +889,7 @@ impl Revmo {
             }
 
             Message::Escape => {
-                if self.args_key.is_some() || self.pane.is_some() {
+                if self.args_key.is_some() || self.pane.is_some() || self.modes.is_some() {
                     self.update(Message::Back)
                 } else {
                     Task::done(Message::Exit)
@@ -679,15 +946,20 @@ impl Revmo {
     }
 
     fn subscription(&self) -> Subscription<Message> {
+        let stdin = match &self.menu {
+            Some(m) if m.kind == menu::Kind::Stdin => Subscription::run(menu::read_stdin),
+            _ => Subscription::none(),
+        };
         Subscription::batch([
             Subscription::run(other_instances),
             event::listen_with(handle_event),
+            stdin,
         ])
     }
 
     fn view(&self) -> Element<'_, Message> {
         let c = self.colors;
-        let content: Element<Message> = if self.is_loading {
+        let content: Element<Message> = if self.is_loading && self.menu.is_none() {
             container(styles::small("loading apps…").color(c.text_muted))
                 .center(Fill)
                 .into()
@@ -714,29 +986,42 @@ impl Revmo {
 
     fn input_row(&self) -> Element<'_, Message> {
         let c = self.colors;
-        let input = text_input("type to search apps", &self.search)
+        let placeholder = match (&self.menu, self.modes) {
+            (Some(m), _) if m.kind == menu::Kind::Stdin => "type to filter",
+            (Some(_), _) => "type to search the clipboard history",
+            (None, Some(_)) => "pick one, or type its prefix",
+            (None, None) => "type to search apps",
+        };
+        let input = text_input(placeholder, &self.search)
             .id(INPUT.clone())
             .on_input(Message::SearchChanged)
-            .on_submit(Message::RunIndex)
+            // A menu's enter comes with its modifiers (see `handle_event`).
+            .on_submit_maybe(self.menu.is_none().then_some(Message::RunIndex))
             .style(move |_, _| styles::search_input(c))
             .font(fonts().regular)
             .size(styles::INPUT_SIZE)
             .padding(0);
-        let position = match self.visible.len() {
-            0 => "0 / 0".to_string(),
-            total => format!("{total} / {}", self.selected + 1),
+        // Until something's typed, the launcher points to the modes.
+        let right: Element<Message> = match (&self.menu, self.modes) {
+            (None, None) if self.search.is_empty() => styles::hint(c, "? modes"),
+            _ => Space::new().into(),
+        };
+        let sign: Element<Message> = match (&self.menu, self.modes) {
+            (_, Some(_)) => list::badge(c),
+            (menu, None) => text(
+                menu.as_ref()
+                    .and_then(|m| m.prompt.as_deref())
+                    .unwrap_or("›"),
+            )
+            .size(styles::INPUT_SIZE)
+            .font(fonts().medium)
+            .color(c.accent)
+            .into(),
         };
         container(
-            row![
-                text("›")
-                    .size(styles::INPUT_SIZE)
-                    .font(fonts().medium)
-                    .color(c.accent),
-                input,
-                styles::small(position).color(c.text_muted),
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center),
+            row![sign, input, right]
+                .spacing(10)
+                .align_y(Alignment::Center),
         )
         .padding([0.0, styles::PAD_X])
         .height(styles::INPUT_HEIGHT)
@@ -746,6 +1031,16 @@ impl Revmo {
 
     /// The part between the input row and the footer.
     fn body(&self) -> Element<'_, Message> {
+        if let Some(selected) = self.modes {
+            return container(list::view(self, selected))
+                .height(LIST_HEIGHT)
+                .into();
+        }
+        if let Some(m) = &self.menu {
+            return container(menu::view(self, m, &self.search))
+                .height(LIST_HEIGHT)
+                .into();
+        }
         let args = self
             .args_key
             .as_ref()
@@ -793,10 +1088,28 @@ impl Revmo {
             .into()
     }
 
+    /// Where the selection is in the list, e.g. "3 / 54", for the footer.
+    fn position(&self) -> String {
+        let (total, selected) = match &self.menu {
+            Some(m) => (m.len(), m.selected),
+            None => (self.visible.len(), self.selected),
+        };
+        match total {
+            0 => "0 / 0".to_string(),
+            total => format!("{} / {total}", selected + 1),
+        }
+    }
+
     fn footer(&self) -> Element<'_, Message> {
         let c = self.colors;
         if let Some((msg, level)) = &self.toast {
             return helpers::toast(msg, level, c);
+        }
+        if let Some(m) = &self.menu {
+            return menu::footer(m, self.position(), c);
+        }
+        if self.modes.is_some() {
+            return list::footer(c);
         }
         let hint = |s| styles::hint(c, s);
         if self.args_key.is_some() {
@@ -825,9 +1138,7 @@ impl Revmo {
                 hint("ctrl+h help"),
                 hint("esc close"),
             ],
-            styles::small(format!("revmo {VERSION}"))
-                .color(c.text_faint)
-                .into(),
+            styles::small(self.position()).color(c.text_muted).into(),
         )
     }
 }
@@ -898,6 +1209,9 @@ fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
             Key::Named(Named::ArrowRight) => Some(Message::Forward),
             Key::Named(Named::ArrowLeft) if modifiers.command() => Some(Message::BackwardTheme),
             Key::Named(Named::ArrowLeft) => Some(Message::Back),
+            Key::Named(Named::Tab) => Some(Message::Complete),
+            // Only used in a menu; elsewhere the input's submit is enter.
+            Key::Named(Named::Enter) => Some(Message::MenuEnter(modifiers)),
             // The key that types h; on a layout without Latin letters
             // (Arabic, Russian, ...), the key in h's place.
             Key::Character(c)
@@ -909,6 +1223,9 @@ fn handle_event(e: Event, _: event::Status, _: window::Id) -> Option<Message> {
             }
             _ => None,
         },
+        Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
+            Some(Message::ModifiersChanged(modifiers))
+        }
         Event::Window(window::Event::Focused) => Some(Message::WindowFocused),
         Event::Window(window::Event::Unfocused) => Some(Message::WindowUnfocused),
         _ => None,

@@ -9,11 +9,13 @@ const KEY_WIDTH: f32 = 130.0;
 /// About as tall as the two lines beside it.
 const LOGO_HEIGHT: f32 = 34.0;
 
-const SHORTCUTS: [(&str, &str); 7] = [
+const SHORTCUTS: [(&str, &str); 9] = [
     ("↲", "run the selected app"),
     ("↑↓", "move the selection"),
     ("→", "actions; arguments of an action"),
     ("←", "back"),
+    ("?", "the modes, typed first"),
+    (";", "clipboard history, typed first"),
     ("ctrl+→ / ctrl+←", "next / previous theme"),
     ("ctrl+h", "this help"),
     ("esc", "back, or close revmo"),
